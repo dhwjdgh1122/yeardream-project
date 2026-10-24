@@ -18,9 +18,9 @@ URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe�
 
 ## 구성과 현재 상태
 
-Python, FastAPI, Uvicorn, httpx, BeautifulSoup4 및 HTML/JavaScript를 사용합니다. 브라우저 렌더링 도구와 Python 지원 버전은 추가 검증 후 확정합니다. 상세 구조는 [wiki.md](wiki.md)를 참조합니다.
+Python, FastAPI, Uvicorn, httpx, BeautifulSoup4, html5lib 및 HTML/JavaScript를 사용합니다. HTML5 파싱으로 브라우저의 tbody 삽입 등을 반영합니다. 수집용 브라우저 렌더링 도구와 Python 지원 버전은 추가 검증 후 확정합니다. 상세 구조는 [wiki.md](wiki.md)를 참조합니다.
 
-최신 검증 결과는 [project.md](project.md)에서 관리합니다. 고유 selector·중첩/반복 iframe 경로·API/JSON 위치 보존에 더해 링크 깊이·수집/탐지 공유 시간 예산을 구현했습니다. 실제 사이트·브라우저·광고 판정 정확도와 requirements.txt의 고정 버전 환경은 아직 확인하지 않았습니다.
+최신 검증 결과는 [project.md](project.md)에서 관리합니다. 고유 selector·중첩/반복 iframe 경로·API/JSON 위치 보존에 더해 링크 깊이·수집/탐지 공유 시간 예산을 구현했습니다. 로컬 합성 페이지의 실제 Edge 검사로 위치 재식별과 UI 흐름을 확인했습니다. 실제 사이트·광고 판정 정확도와 requirements.txt의 고정 버전 환경은 아직 확인하지 않았습니다.
 
 ## 설치 및 실행
 
@@ -64,3 +64,12 @@ node --preserve-symlinks-main --preserve-symlinks scripts/test_frontend.cjs
 ```
 
 통과 여부는 실제 실행 결과로 판단하며 최신 검증 범위와 실패 원인은 [project.md](project.md)에 기록합니다.
+
+실제 브라우저 검사는 Windows의 설치된 Microsoft Edge와 Playwright를 사용합니다. Playwright는 검증 도구이며 앱 실행에 필요하지 않습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install playwright==1.64.0
+.\.venv\Scripts\python.exe -B scripts/test_browser.py
+```
+
+로컬 임시 서버를 열어 표의 DOM 보정·특수문자 ID·반복/중첩 iframe·srcdoc 위치, UI 필터·부분 결과·실패 후 복구·정상 0건을 검사합니다. 결과 파일은 임시 디렉터리로 격리하고 서버와 브라우저는 종료합니다. JS가 추가한 요소는 브라우저에 존재해도 현재 정적 수집에서 탐지되지 않는 한계를 함께 확인합니다. 외부 사이트 정확도 검사와는 별도입니다.

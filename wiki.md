@@ -34,7 +34,7 @@ Frontend → FastAPI → Crawler → Detection Engine
                             API → 결과 UI
 ```
 
-현재 기술은 Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·HTML/JavaScript입니다. 브라우저 렌더링 도구는 미확정입니다. 특정 프레임워크는 팀의 선택이며 공모전 지정 기술이 아닙니다.
+현재 기술은 Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·html5lib·HTML/JavaScript입니다. 수집과 탐지는 HTML5 파서로 동일한 DOM을 구성해 암시적 tbody 등 브라우저의 구조 보정을 반영합니다. 검증에는 Playwright와 설치된 Edge를 사용하며 제품의 동적 수집 도구는 미확정입니다. 특정 프레임워크는 팀의 선택이며 공모전 지정 기술이 아닙니다.
 
 현재 파일 배치는 다음과 같습니다. 파일 존재와 정상 동작은 구분합니다.
 

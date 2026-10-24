@@ -15,7 +15,7 @@ CASES = json.loads((FIXTURES / 'cases.json').read_text(encoding='utf-8'))
 @pytest.mark.parametrize('case', CASES, ids=lambda case: case['file'])
 def test_detection_matches_exact_elements_and_techniques(case):
     html = (FIXTURES / case['file']).read_text(encoding='utf-8')
-    soup = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, 'html5lib')
     findings = detect_page({'url': 'https://example.com/fixture', 'html': html})
     actual = []
     for finding in findings:

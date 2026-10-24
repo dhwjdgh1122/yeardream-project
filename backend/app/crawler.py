@@ -11,7 +11,7 @@ from .limits import AnalysisTimeout, Deadline
 
 
 def extract_iframe_sources(html: str, page_url: str) -> List[str]:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, "html5lib")
     source_urls: List[str] = []
     seen = set()
 
@@ -159,7 +159,7 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
                 continue
             visited_pages.add(final_url)
         html = document["html"]
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(html, "html5lib")
         links = []
         link_omissions = []
         for anchor in soup.find_all("a", href=True):

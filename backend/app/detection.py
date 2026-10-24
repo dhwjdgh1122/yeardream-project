@@ -87,7 +87,8 @@ def detect_page(page: Dict[str, object], *, deadline: Deadline | None = None) ->
     url = str(page.get("top_url") or page.get("url", ""))
     frame_path = list(page.get("frame_path", []))
     html = str(page.get("html", ""))
-    soup = BeautifulSoup(html, "html.parser")
+    # HTML5 tree construction includes browser repairs such as implicit tbody.
+    soup = BeautifulSoup(html, "html5lib")
 
     for technique, explanation in [
         ("HOMOGLYPH", "유사 문자 기반 위장 문자열이 감지되었습니다."),

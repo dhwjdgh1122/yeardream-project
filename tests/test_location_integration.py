@@ -44,11 +44,11 @@ def test_locations_survive_crawl_api_result_and_file(monkeypatch, tmp_path):
         document_url = internal['url']
         segments = internal['location'].split(' >>> ')
         for selector in segments[:-1]:
-            soup = BeautifulSoup(documents[document_url], 'html.parser')
+            soup = BeautifulSoup(documents[document_url], 'html5lib')
             frames = soup.select(selector)
             assert len(frames) == 1
             document_url = urljoin(document_url, frames[0]['src'])
-        soup = BeautifulSoup(documents[document_url], 'html.parser')
+        soup = BeautifulSoup(documents[document_url], 'html5lib')
         matches = soup.select(segments[-1])
         assert len(matches) == 1
         assert matches[0].get_text(strip=True) in internal['evidence']
