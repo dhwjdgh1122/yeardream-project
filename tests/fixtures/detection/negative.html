@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>정상 표시 경계 페이지</title>
+  <style>/* ㅈㅏㅁㅗ */ .sample { color: black; }</style>
+  <script>const sample = 'ㅈㅏㅁㅗ ｅxample';</script>
+</head><body>
+  <!-- ㅈㅏㅁㅗ ｅxample -->
+  <p id="clean">정상 한글과 ordinary English</p>
+  <p id="half" style="opacity:0.5">반투명</p>
+  <p id="low" style="opacity:0.05">낮은 불투명도</p>
+  <p id="overridden" style="opacity:0;opacity:1">나중 선언 우선</p>
+  <p id="absolute" style="position:absolute;left:10px">정상 배치</p>
+  <p id="overflow" style="overflow:hidden">정상 잘라내기</p>
+  <p id="static-left" style="left:-9999px">위치 지정 없는 좌표</p>
+  <p id="normal-size" style="font-size:12px">정상 크기</p>
+  <p id="class-only" class="transparent null">클래스 이름만으로 은닉 판정하지 않음</p>
+  <p id="attribute-only" data-sample="ㅈㅏㅁㅗ">속성은 표시 텍스트가 아님</p>
+  <div id="empty" style="opacity:0"></div>
+  <template><p>ㅈㅏㅁㅗ ｅxample</p></template>
+</body></html>

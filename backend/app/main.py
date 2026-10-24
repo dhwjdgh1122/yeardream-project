@@ -1,0 +1,127 @@
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+
+from .crawler import crawl_site
+from .detection import detect_page
+from .result import build_result_json
+from .models import AnalyzeRequest, AnalysisResponse, Finding
+from .limits import AnalysisTimeout, Deadline
+
+app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+project_root = Path(__file__).resolve().parents[2]
+frontend_dir = project_root / "frontend" / "static"
+result_path = project_root / "result.json"
+
+
+@app.get("/api/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/api/analyze", response_model=AnalysisResponse)
+def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
+    try:
+        started_at = datetime.now(timezone.utc).isoformat()
+        deadline = Deadline.after(payload.total_timeout_sec)
+        pages = crawl_site(payload.url, max_pages=8, max_depth=payload.max_depth, deadline=deadline)
+        crawl_timed_out = any(page.get("crawl_stop_reason") == "total_timeout" for page in pages)
+        successful_pages = [page for page in pages if "error" not in page]
+        if not successful_pages:
+            if crawl_timed_out:
+                raise HTTPException(status_code=504, detail="분석 시간 제한에 도달했습니다.")
+            raise HTTPException(status_code=502, detail="분석할 페이지를 수집하지 못했습니다.")
+        warnings = []
+        for page in pages:
+            if "error" in page:
+                path = " >>> ".join(page.get("frame_path", []))
+                warnings.append(f"수집 실패: {page['url']} ({path or 'page'})")
+            for omission in page.get("frame_omissions", []):
+                warnings.append(f"iframe 분석 제외: {omission['location']} ({omission['reason']})")
+            if page.get("link_omissions"):
+                warnings.append(f"링크 탐색 깊이 제한: {page['url']} (max_depth={payload.max_depth})")
+            if page.get("crawl_truncated"):
+                if page.get("crawl_stop_reason") == "total_timeout":
+                    warnings.append("분석 시간 제한에 도달했습니다.")
+                else:
+                    warnings.append("탐색 한도에 도달해 일부 페이지 또는 iframe을 분석하지 못했습니다.")
+        findings: List[Finding] = []
+        seen = set()
+        raw_findings: List[Dict[str, Any]] = []
+
+        analyzed_pages = 0
+        for page in successful_pages:
+            try:
+                page_findings = detect_page(page, deadline=deadline)
+            except AnalysisTimeout:
+                if not analyzed_pages:
+                    raise HTTPException(status_code=504, detail="분석 시간 제한에 도달했습니다.")
+                warnings.append("분석 시간 제한으로 나머지 페이지 분석을 중단했습니다.")
+                break
+            analyzed_pages += 1
+            for detected in page_findings:
+                key = (detected["url"], detected["location"], detected["technique"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                finding = Finding(
+                    technique=detected["technique"],
+                    selector=detected["selector"],
+                    location=detected["location"],
+                    url=detected["url"],
+                    evidence=detected["evidence"],
+                    confidence=float(detected["confidence"]),
+                )
+                findings.append(finding)
+                raw_findings.append(
+                    {
+                        "technique": detected["technique"],
+                        "selector": detected["selector"],
+                        "location": detected["location"],
+                        "url": detected["url"],
+                        "evidence": detected["evidence"],
+                        "confidence": float(detected["confidence"]),
+                    }
+                )
+
+        finished_at = datetime.now(timezone.utc).isoformat()
+        result_json = build_result_json(payload.url, raw_findings, started_at=started_at, finished_at=finished_at)
+        result_path.write_text(json.dumps(result_json, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        page_title = successful_pages[0].get("title")
+        return AnalysisResponse(
+            url=payload.url,
+            page_title=str(page_title) if page_title else None,
+            crawled_pages=list(dict.fromkeys(str(page["url"]) for page in successful_pages)),
+            findings=findings,
+            result_json=result_json,
+            warnings=warnings,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/")
+def serve_index() -> FileResponse:
+    return FileResponse(frontend_dir / "index.html")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)

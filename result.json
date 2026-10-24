@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "topic": "illegal-ad-detection",
+    "entry_url": "https://example.com",
+    "started_at": "2026-10-23T06:31:10.510138+00:00",
+    "finished_at": "2026-10-23T06:31:10.993209+00:00",
+    "elapsed_sec": 0.48,
+    "tool_version": "YearDream-0.1.0"
+  },
+  "findings": []
+}

@@ -1,0 +1,19 @@
+[
+  {
+    "file": "positive.html",
+    "expected": {
+      "homoglyph": ["HOMOGLYPH"],
+      "jamo": ["JAMO"],
+      "transparent": ["TRANSPARENT"],
+      "opacity-zero": ["TRANSPARENT"],
+      "offscreen": ["OFFSCREEN"],
+      "second-offscreen": ["OFFSCREEN"],
+      "tiny": ["OFFSCREEN"],
+      "display-none": ["OFFSCREEN"],
+      "combined": ["JAMO", "TRANSPARENT"],
+      "inherited-opacity": ["TRANSPARENT"],
+      "important": ["TRANSPARENT"]
+    }
+  },
+  {"file": "negative.html", "expected": {}}
+]
