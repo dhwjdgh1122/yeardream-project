@@ -45,10 +45,12 @@ Microsoft Edge와 requirements-dev 환경이 있는 빌드 PC에서 실행합니
 실행 파일의 패키지 검사를 완료하고 소스/문서를 커밋해 작업 트리가 깨끗한 상태에서 실행합니다. 실제 출력 경로와 검사 보고서는 해당 빌드에 맞춰 지정합니다.
 
 ```powershell
-.venv\Scripts\python.exe -B scripts/package_submission.py --bundle dist/release-20261025-03/YearDream --validation-report .validation/packaged-release-20261025-03.json --output dist/submission-20261025-01
+.venv\Scripts\python.exe -B scripts/package_submission.py --bundle dist/release-20261025-04/YearDream --validation-report .validation/packaged-release-20261025-04.json --output dist/submission-20261025-02
 ```
 
 `YearDream-submission` 폴더, 같은 이름의 ZIP, ZIP SHA-256 파일이 생성됩니다. 기존 출력은 덮어쓰지 않습니다. 단계별 설명은 SUBMISSION_CHECKLIST.md를 따릅니다. 현재 PC의 검사 보고서가 exe/빌드 매니페스트와 일치해야 하며 기록된 분석 코드·리소스·의존성 입력을 현재 소스 바이트와 대조합니다. 새 분석 모듈/리소스나 변경된 빌드 입력은 새 빌드와 검사가 필요합니다. 명시적으로 분리된 오프라인 검수 모듈의 후속 변경은 별도 기록합니다.
+
+위 출력 경로가 이미 있으면 새로운 이름을 사용합니다. release-20261025-04는 DB 포함 검사 완료 실행 파일이고, submission-20261025-01은 이전 DB 미포함 후보입니다. 문서만 바뀐 경우 실행 파일을 재빌드하지 않고 동일 빌드의 검증 근거를 사용해 현재 문서/소스를 새 후보로 묶을 수 있습니다. 실행 폴더 안 설명서는 빌드 당시 사본이고 `03_docs`가 이번 묶음의 최신 설명서입니다. 이력을 저장한 실제 SQLite 파일은 소스나 실행 폴더에 추가하지 않습니다.
 
 소스 ZIP은 Git 추적 파일 중 소스·합성 테스트·문서·고정 의존성을 현재 바이트로 담고 commit ID와 파일 해시를 기록합니다. Git 이력·가상환경·실제 수집/검수 자료·기존 result.json·비밀 설정 파일은 제외합니다. 실행 폴더도 검사된 파일만 복사하므로 사용 후 남은 결과를 전달하지 않습니다. 확인된 원문 PDF는 별도 양식 참고용이며 작성된 서류를 대신하지 않습니다.
 
