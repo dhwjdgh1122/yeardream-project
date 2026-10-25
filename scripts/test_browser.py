@@ -96,6 +96,18 @@ def run():
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(base)
+                    assert page.locator('#download').is_disabled()
+
+                    def download_json(data, name):
+                        with page.expect_download() as pending:
+                            page.locator('#download').click()
+                        download = pending.value
+                        assert download.suggested_filename == 'result.json'
+                        path = Path(temporary) / f'{name}.json'
+                        download.save_as(path)
+                        raw = path.read_bytes()
+                        assert not raw.startswith(b'\xef\xbb\xbf')
+                        assert json.loads(raw.decode('utf-8')) == data['result_json']
 
                     def analyze(name, expected_status=200):
                         page.locator('#url').fill(f'{base}/fixtures/{name}')
@@ -110,6 +122,7 @@ def run():
                     assert len(data['findings']) == 9, data
                     assert data['warnings'] and '일부 범위 미분석' in page.locator('#status').inner_text()
                     assert json.loads(main.result_path.read_text(encoding='utf-8')) == data['result_json']
+                    download_json(data, 'static-partial')
                     target = browser.new_page()
                     target.goto(base + '/fixtures/root')
                     for finding in data['findings']:
@@ -130,15 +143,25 @@ def run():
                         expected = [f for f in data['findings'] if technique == 'ALL' or f['technique'] == technique]
                         assert summary['totalFindings'] == len(expected)
                         assert all(f['evidence'] for f in summary['findings'])
+                    page.locator('#techniqueFilter').select_option('JAMO')
+                    assert json.loads(page.locator('#output').inner_text())['totalFindings'] == 1
+                    download_json(data, 'filtered-full')
+                    # Another client may replace the shared server file; this page retains its own result.
+                    other = page.request.post(base + '/api/analyze', data={'url': base + '/fixtures/clean'})
+                    assert other.status == 200
+                    assert json.loads(main.result_path.read_text(encoding='utf-8'))['findings'] == []
+                    download_json(data, 'retained-result')
                     previous = main.result_path.read_bytes()
                     analyze('missing', 502)
                     assert page.locator('#status').inner_text() == '오류 발생'
+                    assert page.locator('#download').is_disabled()
                     assert main.result_path.read_bytes() == previous
                     page.locator('#techniqueFilter').select_option('ALL')
                     assert '수집하지 못했습니다' in page.locator('#output').inner_text()
                     clean = analyze('clean')
                     assert clean['findings'] == [] and not clean['warnings']
                     assert '분석 완료: 0개' in page.locator('#status').inner_text()
+                    download_json(clean, 'static-empty')
                     dynamic = analyze('dynamic')
                     target.goto(base + '/fixtures/dynamic')
                     target.wait_for_selector('#dynamic-ad', state='attached')
@@ -150,6 +173,7 @@ def run():
                     assert not runtime['warnings'], runtime['warnings']
                     assert json.loads(main.result_path.read_text(encoding='utf-8')) == runtime['result_json']
                     assert json.loads(page.locator('#output').inner_text())['collectionMode'] == 'browser'
+                    download_json(runtime, 'dynamic-full')
                     assert any('Fetched comment' in f['evidence'] for f in runtime['findings'])
                     assert any('Insertion 1' in f['evidence'] for f in runtime['findings'])
                     assert any('Insertion 2' in f['evidence'] for f in runtime['findings'])
@@ -183,11 +207,14 @@ def run():
                     assert any('Fixture runtime error' in warning for warning in partial['warnings'])
                     assert any('수집 실패' in warning for warning in partial['warnings'])
                     assert '일부 범위 미분석' in page.locator('#status').inner_text()
+                    download_json(partial, 'dynamic-partial')
                     previous = main.result_path.read_bytes()
                     analyze('missing', 502)
+                    assert page.locator('#download').is_disabled()
                     assert main.result_path.read_bytes() == previous
                     clean = analyze('clean')
                     assert clean['findings'] == [] and clean['collection_mode'] == 'browser'
+                    download_json(clean, 'dynamic-empty')
                     # Startup and waiting both share the analysis deadline.
                     previous = main.result_path.read_bytes()
                     expired = page.request.post(base + '/api/analyze', data={
@@ -199,6 +226,7 @@ def run():
                     assert not errors, errors
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
                     print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')
+                    print('Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled')
         finally:
             server.should_exit = True
             thread.join(timeout=10)

@@ -26,7 +26,7 @@
 
 ## 3. 현재 요약
 
-사용자 혼자 구현·탐지 기준·데이터·검증을 모두 담당합니다. 기본 정적 분석에 선택적인 동적 페이지 분석을 추가했습니다. Playwright·Edge에서 JS 생성 본문·fetch 댓글·링크·실제 iframe DOM을 수집하며 기존 탐지·위치·결과 흐름으로 전달합니다. 최신 검증은 15절의 Python 66개 통과 및 Edge 검사입니다. 실제 사이트·광고 판정 정확도·computed style 판정·고정 의존성 환경 재현·엄격한 시간 강제 종료 검증은 남아 있습니다.
+사용자 혼자 구현·탐지 기준·데이터·검증을 모두 담당합니다. 기본/동적 분석에 이어 제출용 JSON 다운로드를 추가했습니다. 화면 필터와 관계없이 해당 화면의 전체 결과를 저장하며 기본·동적·부분·0건 결과를 검증했습니다. 최신 검증은 16절의 Python 66개 통과 및 Node·Edge 검사입니다. 실제 사이트·광고 판정 정확도·computed style 판정·고정 의존성 환경 재현·엄격한 시간 강제 종료 검증은 남아 있습니다.
 
 ## 4. 기능별 현황
 
@@ -41,7 +41,7 @@
 | UI·필터 | FR-020~021 | 검증 통과(부분) | Edge에서 기본/동적 분석 선택·4종 필터·전체 복귀·근거·부분 결과·오류 후 복구·정상 0건 확인. 별도 유형별 집계 UI는 미검증 |
 | 탐지·정확도 | FR-023~033 | 구현됨·검증 전 | 합성 특징 사례 통과, 사용자의 광고 판정 기준 확정·실사이트 정확도 검증 필요 |
 | 상태 안내 | FR-035 | 검증 통과(부분) | Edge에서 완료·부분 완료·오류·정상 0건 상태 확인. 진행 중 문구·중복 클릭의 브라우저 검증은 남음 |
-| JSON 다운로드 | FR-036 | 미구현 | UI 기능 확인되지 않음 |
+| JSON 다운로드 | FR-036 | 검증 통과(부분) | Edge에서 기본/동적·부분/0건·필터 적용·서버 파일 변경 후 화면별 보존·파일명/UTF-8·API 값 일치 확인. 공식 스키마 원문 대조는 남음 |
 | 한도·실패 구분 | FR-037, FR-039 | 검증 통과(부분) | 문서 수·링크 깊이·프레임 깊이·공유 시간 예산, 전체 실패502/시간 초과504/부분 경고 검증. 즉시 강제 종료는 아님 |
 | 동적 콘텐츠 | FR-040 | 검증 통과(부분) | 선택적 browser 모드에서 JS 본문·fetch 댓글·링크·프레임 수집을 로컬 합성 페이지로 검증. 실제 사이트·클릭/스크롤·Shadow DOM·computed style은 미검증/미지원 |
 
@@ -189,7 +189,7 @@ README·wiki·이 문서를 갱신했습니다. 기존 result.json·requirements
 5. 실제 사이트: 허용 범위·오탐·미탐·근거·상태·다운로드 검증.
 6. 평가·제출: 공식 원문 대조, 실제 Windows·시간 제한·배포 산출물 확인.
 
-한도·Git 연결·로컬 브라우저 검증·선택적 동적 수집 작업은 완료했습니다. 다음 우선순위는 미구현인 JSON 다운로드 UI와 결과 일치 검증입니다. 이후 고정 의존성 환경 재현과 실제 사이트의 정답 검수·정확도 확인을 진행해야 합니다. 공식 원문 미확인은 별도로 관리합니다. Git 연결은 13절, 브라우저 검증은 14절, 동적 수집은 15절에 기록합니다.
+한도·Git 연결·로컬 브라우저 검증·선택적 동적 수집·JSON 다운로드 작업은 완료했습니다. 다음 우선순위는 고정 의존성 환경 재현과 실행 절차 검증입니다. 이후 실제 사이트의 정답 검수·정확도 확인이 필요합니다. 공식 원문 미확인은 별도로 관리합니다. Git 연결은 13절, 브라우저 검증은 14절, 동적 수집은 15절, 다운로드는 16절에 기록합니다.
 
 ## 12. 재개·마무리
 
@@ -197,7 +197,7 @@ README·wiki·이 문서를 갱신했습니다. 기존 result.json·requirements
 
 단계 종료 시 날짜·변경 파일·실행 명령/결과·관련 FR·남은 문제·다음 작업·Git 기록 여부를 갱신합니다.
 
-이전 문서의 '4개/5개 통과', 'health·분석 API 정상', '핵심 검증 완료'는 과거 기록으로만 보존합니다. 최초 재점검은 import 실패였으며 최신 검증 근거는 15절의 실행 결과입니다. 과거의 완료 주장을 현재 전체 완료 근거로 사용하지 않습니다.
+이전 문서의 '4개/5개 통과', 'health·분석 API 정상', '핵심 검증 완료'는 과거 기록으로만 보존합니다. 최초 재점검은 import 실패였으며 최신 검증 근거는 16절의 실행 결과입니다. 과거의 완료 주장을 현재 전체 완료 근거로 사용하지 않습니다.
 
 ## 13. GitHub 연결·최초 업로드
 
@@ -276,3 +276,31 @@ Playwright 1.64.0·Edge 156.0.4314.42와 앞 절과 같은 Python 환경에서 �
 지원 범위는 관찰 시점까지 생성된 DOM입니다. 자동 스크롤·클릭·로그인·Shadow DOM·CSS computed style 판정·HTML base 요소는 미지원입니다. 늦은 비동기 처리·관찰 이후의 DOM 변화·전체 프레임의 동일 시점 고정을 보장하지 않습니다. 문서/깊이 제한은 분석 컨텍스트에 적용하며 브라우저 리소스 로딩 수 제한이 아닙니다. 외부 프레임은 분석에서 제외하지만 외부 통신 자체를 차단하지 않습니다. 드라이버 시작·DOM 직렬화·종료를 포함한 엄격한 강제 중단도 미지원입니다.
 
 README·wiki·이 진행 기록을 갱신했습니다. 커밋 메시지는 `feat: add optional browser collection for dynamic pages`로 기록하고 Git 상태와 원격 조회로 업로드를 확인합니다.
+
+## 16. JSON 다운로드·결과 일치
+
+2026-10-25 사용자가 다음 작업 진행을 승인해 JSON 다운로드를 구현·검증했습니다. 관련 요구사항은 FR-019~021·FR-035~036·FR-039입니다.
+
+- frontend/static/index.html에 JSON 다운로드 버튼을 추가했습니다. 마지막 성공 응답의 result_json 전체를 UTF-8(BOM 없음) Blob으로 직렬화해 result.json으로 저장합니다. 화면 요약·유형 필터와 독립적이며 기본/동적·부분/0건 결과를 지원합니다.
+- 분석 전·새 분석 진행 중·요청 실패·빈 URL 제출 후에는 다운로드를 비활성화합니다. 빈 URL 제출도 이전 응답을 비워 과거 결과의 재다운로드와 필터 복원을 막습니다. 다운로드 후 임시 링크와 object URL을 정리합니다.
+- 부분 분석의 warnings는 화면 안내로 유지하고 제출 JSON에 추가하지 않습니다. 서버의 공유 result.json을 다시 받지 않으므로 다른 요청이 서버 파일을 바꾸더라도 현재 화면의 결과를 보존합니다.
+- scripts/test_frontend.cjs에 전체 결과·필터 독립성·빈 결과·비활성 상태·MIME·UTF-8·object URL 정리 검증을 추가했습니다. scripts/test_browser.py는 실제 Edge 다운로드 파일을 임시 디렉터리에 저장해 파일명·인코딩·API 결과와의 동등성을 검사합니다. JSON 동등성은 파싱한 값 기준입니다.
+- Edge에서 정적 부분 결과 9건, 필터로 1건만 표시한 상태의 전체 결과, 다른 클라이언트가 서버 파일을 0건으로 바꾼 후의 기존 화면 결과, 정적 0건, 동적 전체 11건·부분 1건·0건 다운로드를 확인했습니다. 초기와 UI 분석 실패 502 후 버튼 비활성화도 확인했습니다.
+
+```text
+설치된 Python 실행 파일 -B -m pytest tests -q -p no:cacheprovider
+66 passed, 1 warning
+
+node --preserve-symlinks-main --preserve-symlinks scripts/test_frontend.cjs
+Frontend checks passed: API, modes, filters, partial results, failure reset, full JSON downloads, empty results, UTF-8, URL cleanup.
+
+설치된 Python 실행 파일 -B scripts/test_browser.py
+Browser locations passed: tables, escaped IDs, repeated/nested frames, srcdoc
+Browser checks passed: Edge 156.0.4314.42; UI, filters, partial results, failure recovery, empty results
+Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation
+Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled
+```
+
+환경·TestClient 경고는 15절과 같습니다. 백엔드·의존성·기존 result.json은 변경하지 않았습니다. 실제 브라우저 입력은 로컬 합성 페이지이며 실제 사이트 정확도·공식 스키마·전체 고정 의존성 환경·타 브라우저는 미검증입니다.
+
+README·wiki·진행 기록을 갱신했습니다. 커밋 메시지는 `feat: download full analysis results as JSON`이며 Git 상태·원격 조회로 업로드를 확인합니다. 다음 작업은 고정 의존성 환경 재현과 실행 절차 검증입니다.

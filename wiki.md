@@ -216,6 +216,10 @@ crawled_pages는 수집 성공한 문서 URL의 중복 없는 목록입니다. s
 
 UI 목표는 URL 입력·실행·상태 안내·전체/유형별 건수·URL·location·근거·필터·JSON 다운로드입니다. 응답 원본을 보존해 필터링합니다. Frontend에 수집·탐지 로직을 넣지 않습니다.
 
+JSON 다운로드는 현재 화면의 마지막 성공 응답에 담긴 result_json 전체를 사용합니다. 유형 필터는 다운로드 내용에 영향을 주지 않습니다. Blob(application/json;charset=utf-8)과 임시 링크로 result.json을 저장하고 링크·object URL을 정리합니다. UTF-8 BOM 없이 직렬화하며 API·서버 파일과의 동등성은 파싱한 JSON 값 기준입니다. 기본/동적·부분 분석·0건 모두 저장할 수 있습니다. 부분 분석의 warnings는 기존 제출 규격에 추가하지 않으며 화면 안내를 유지합니다.
+
+분석 전과 새 분석 시작 시 다운로드를 비활성화하고 성공 응답 이후에만 활성화합니다. 실패·빈 URL 제출 후에는 과거 응답으로 내려받지 못하게 합니다. 공유 서버 파일을 다시 가져오는 경로는 추가하지 않으며 다른 요청이 파일을 덮어써도 현재 화면의 응답을 유지합니다.
+
 Job 기반 `/api/detection`, `/api/detection/{id}`, `/api/detection/{id}/status`, `/api/detection/{id}/result`, `/api/detection/{id}/download`는 이전 문서의 향후 제안이며 도입 미확정입니다. 현재 API가 아닙니다. queued/running/completed/failed/timeout은 목표 상태 의미이며 기본 안내가 반드시 상태 API를 요구하지는 않습니다.
 
 ## 9. 검증·변경 원칙

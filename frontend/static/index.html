@@ -34,6 +34,10 @@
         color: white;
         border: none;
       }
+      button:disabled {
+        cursor: default;
+        opacity: 0.5;
+      }
       .result {
         margin-top: 20px;
         white-space: pre-wrap;
@@ -74,6 +78,10 @@
         </div>
         <p>동적 페이지 분석은 JavaScript로 생성되는 내용을 확인합니다. 스크롤·클릭이 필요한 내용과 늦게 표시되는 내용은 포함되지 않을 수 있습니다.</p>
         <div class="status" id="status">대기 중</div>
+        <p>
+          <button id="download" disabled>JSON 다운로드</button>
+          화면 필터와 관계없이 전체 결과를 저장합니다. 부분 분석이면 안내 내용도 확인해 주세요.
+        </p>
         <div class="result" id="output">결과가 여기에 표시됩니다.</div>
       </div>
     </div>
@@ -85,6 +93,7 @@
       const techniqueFilter = document.getElementById('techniqueFilter');
       const analyzeButton = document.getElementById('analyze');
       const collectionMode = document.getElementById('collectionMode');
+      const downloadButton = document.getElementById('download');
       let lastAnalysis = null;
 
       function renderFindings(data) {
@@ -111,13 +120,15 @@
       }
 
       analyzeButton.addEventListener('click', async () => {
+        lastAnalysis = null;
+        downloadButton.disabled = true;
         const url = urlInput.value.trim();
         if (!url) {
           status.textContent = 'URL을 입력해 주세요.';
+          output.textContent = '결과가 여기에 표시됩니다.';
           return;
         }
 
-        lastAnalysis = null;
         analyzeButton.disabled = true;
         collectionMode.disabled = true;
         status.textContent = '탐지 중...';
@@ -137,6 +148,7 @@
 
           lastAnalysis = data;
           renderFindings(lastAnalysis);
+          downloadButton.disabled = !data.result_json;
           const completion = data.warnings?.length ? '분석 완료(일부 범위 미분석)' : '분석 완료';
           status.textContent = `${completion}: ${data.findings.length}개 탐지 결과`;
         } catch (error) {
@@ -145,6 +157,24 @@
         } finally {
           analyzeButton.disabled = false;
           collectionMode.disabled = false;
+        }
+      });
+
+      downloadButton.addEventListener('click', () => {
+        if (downloadButton.disabled || !lastAnalysis?.result_json) return;
+        const blob = new Blob([JSON.stringify(lastAnalysis.result_json, null, 2)], {
+          type: 'application/json;charset=utf-8'
+        });
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = 'result.json';
+        document.body.appendChild(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
         }
       });
 
