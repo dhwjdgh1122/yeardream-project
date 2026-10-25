@@ -6,10 +6,19 @@ from pydantic import BaseModel, Field
 class AnalyzeRequest(BaseModel):
     url: str = Field(..., description="점검할 웹사이트 URL")
     collection_mode: Literal['static', 'browser'] = 'static'
+    max_pages: int = Field(default=8, ge=1, le=1000)
+    prioritize_boards: bool = False
     render_wait_ms: int = Field(default=500, ge=0, le=5000, description="동적 분석의 DOMContentLoaded 후 추가 대기(ms)")
     max_depth: int = Field(default=2, ge=0, le=20, description="시작 페이지가 0인 링크 탐색 깊이")
     total_timeout_sec: float = Field(default=60.0, gt=0, le=1800, allow_inf_nan=False,
                                      description="수집과 탐지가 공유하는 시간 예산(초)")
+
+
+class JobRequest(AnalyzeRequest):
+    max_pages: int = Field(default=100, ge=1, le=1000)
+    max_depth: int = Field(default=4, ge=0, le=20)
+    total_timeout_sec: float = Field(default=1500, gt=0, le=1800, allow_inf_nan=False)
+    prioritize_boards: bool = True
 
 
 class Finding(BaseModel):

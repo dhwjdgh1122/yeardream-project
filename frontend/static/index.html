@@ -67,6 +67,7 @@
       .location { font-family: monospace; font-size: 13px; overflow-wrap: anywhere; }
       .muted { color: #4b5563; }
       #warnings { color: #92400e; }
+      #jobStatus { overflow-wrap: anywhere; }
       details { margin-top: 20px; }
       summary { cursor: pointer; }
       select { max-width: 100%; padding: 10px; }
@@ -100,8 +101,17 @@
           </select>
           <button id="analyze">탐지 실행</button>
         </div>
+        <div class="row" style="margin-top:12px">
+          <label>문서 한도 <input id="maxPages" type="number" value="100" min="1" max="1000" style="width:100px"></label>
+          <label>링크 깊이 <input id="maxDepth" type="number" value="4" min="0" max="20" style="width:90px"></label>
+          <label>시간 예산(분) <input id="timeBudget" type="number" value="25" min="1" max="30" style="width:90px"></label>
+        </div>
+        <p>게시판·게시글 링크를 우선 탐색합니다. 100문서는 시험 기준이며 사이트 전체 검사나 25분 내 완료를 보장하지 않습니다.</p>
         <p>동적 페이지 분석은 JavaScript로 생성되는 내용과 브라우저에 적용된 숨김 스타일을 확인합니다. 스크롤·클릭이 필요한 내용과 늦게 표시되는 내용은 포함되지 않을 수 있습니다.</p>
         <div class="status" id="status" role="status">대기 중</div>
+        <progress id="jobProgress" aria-label="설정 범위 작업 진행" hidden style="width:100%;height:20px"></progress>
+        <p id="jobStatus" role="status">실행하면 실제 처리 건수와 경과 시간이 표시됩니다. 전체 작업량을 알 수 없어 사이트 검사율은 표시하지 않습니다.</p>
+        <button id="cancelJob" disabled>중단하고 현재 결과 보기</button>
         <p>
           <button id="download" disabled>JSON 다운로드</button>
           <button id="downloadContent" disabled>광고 후보 다운로드</button>
@@ -118,7 +128,7 @@
         <section aria-label="실제 탐색·분석 범위">
           <h2>실제 탐색·분석 범위</h2>
           <p>사이트 전체 검사 결과가 아닙니다. 전체 유형은 결과의 유형 필터입니다. 같은 호스트의 HTTP(S) 링크를 탐색하며, 자동 클릭·스크롤은 하지 않습니다. 발견하지 못한 링크·게시글·댓글은 아래 목록에도 없을 수 있습니다.</p>
-          <p id="coverageSummary">기본 한도: 문서 8개(실패·iframe 포함), 링크 깊이 2, 공유 시간 예산 60초. 이는 공모전 지정 한도가 아닌 현재 구현 설정입니다.</p>
+          <p id="coverageSummary">시험 기본값: 문서 100개(실패·iframe 포함), 깊이 4, 시간 예산 25분. 공모전 지정 문서 한도가 아닌 구현 설정입니다.</p>
           <details id="coverageDetails">
             <summary>수집·분석 문서와 미방문·제외 범위 보기</summary>
             <div id="coverageDocuments"></div>
@@ -146,6 +156,76 @@
       const downloadContentButton = document.getElementById('downloadContent');
       const downloadExtraButton = document.getElementById('downloadExtra');
       let lastAnalysis = null;
+      let activeJobId = null;
+      try { activeJobId = sessionStorage.getItem('yeardream-active-job'); } catch (_) {}
+      const cancelButton = document.getElementById('cancelJob');
+      const jobStatus = document.getElementById('jobStatus');
+      const jobProgress = document.getElementById('jobProgress');
+      const settings = ['maxPages', 'maxDepth', 'timeBudget'].map(id => document.getElementById(id));
+      if (activeJobId) {
+        analyzeButton.textContent = '진행 확인 재시도';
+        cancelButton.disabled = false;
+        urlInput.disabled = true;
+        collectionMode.disabled = true;
+        settings.forEach(input => { input.disabled = true; });
+      }
+
+      function setJobId(id) {
+        activeJobId = id;
+        try {
+          if (id) sessionStorage.setItem('yeardream-active-job', id);
+          else sessionStorage.removeItem('yeardream-active-job');
+        } catch (_) {}
+      }
+
+      async function requestJson(path, options) {
+        const response = await fetch(path, options);
+        const data = await response.json();
+        if (!response.ok) {
+          const error = new Error(typeof data.detail === 'string' ? data.detail : '요청 설정이나 실행 상태를 확인해 주세요.');
+          error.status = response.status;
+          throw error;
+        }
+        return data;
+      }
+
+      async function waitForJob() {
+        const phaseLabels = { starting: '시작 중', collecting: '문서 수집 중', analyzing: '문서 분석 중',
+          saving: '결과 저장 중', cancelling: '중단 요청됨 · 진행 중인 요청/처리를 정리하고 있습니다',
+          completed: '설정 범위 처리 종료', cancelled: '사용자 중단', failed: '작업 실패' };
+        while (activeJobId) {
+          const job = await requestJson(`/api/jobs/${encodeURIComponent(activeJobId)}`);
+          if (job.request.url) urlInput.value = job.request.url;
+          if (job.request.collection_mode) collectionMode.value = job.request.collection_mode;
+          settings[0].value = job.request.max_pages;
+          if (job.request.max_depth !== undefined) settings[1].value = job.request.max_depth;
+          if (job.request.total_timeout_sec !== undefined) settings[2].value = job.request.total_timeout_sec / 60;
+          const p = job.progress;
+          const elapsed = `${Math.floor(job.elapsed_seconds / 60)}분 ${Math.floor(job.elapsed_seconds % 60)}초`;
+          jobStatus.textContent = `${phaseLabels[p.phase] || p.phase} · 수집 ${p.collected_documents}문서 · 탐지 완료 ${p.analyzed_documents}문서 / 한도 ${job.request.max_pages} · 대기 ${p.pending_documents} · 실패 ${p.failed_documents} · 경과 ${elapsed}${p.current_url ? ' · 현재: ' + p.current_url : ''}`;
+          if (['completed', 'cancelled', 'failed'].includes(job.status)) {
+            setJobId(null);
+            cancelButton.disabled = true;
+            jobProgress.max = 1;
+            jobProgress.value = 1;
+            if (!job.result && job.status !== 'cancelled') throw new Error(job.error?.detail || '완료한 문서가 없어 새 결과를 만들지 않았습니다.');
+            return job;
+          }
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      cancelButton.addEventListener('click', async () => {
+        if (!activeJobId) return;
+        cancelButton.disabled = true;
+        try {
+          await requestJson(`/api/jobs/${encodeURIComponent(activeJobId)}/cancel`, { method: 'POST' });
+          jobStatus.textContent = '중단을 요청했습니다. 진행 중인 통신/처리를 정리한 뒤 완료한 문서의 결과를 표시합니다.';
+        } catch (error) {
+          jobStatus.textContent = `중단 요청 실패: ${error.message}`;
+          cancelButton.disabled = false;
+        }
+      });
 
       const techniqueLabels = { HOMOGLYPH: '닮은꼴 문자', JAMO: '자모 분리',
         TRANSPARENT: '투명·은닉 스타일', OFFSCREEN: '화면 밖·숨김 배치' };
@@ -169,7 +249,7 @@
         document.getElementById('rawDetails').open = false;
         document.getElementById('coverageDocuments').replaceChildren();
         document.getElementById('coverageDetails').open = false;
-        document.getElementById('coverageSummary').textContent = '기본 한도: 문서 8개(실패·iframe 포함), 링크 깊이 2, 공유 시간 예산 60초. 이는 공모전 지정 한도가 아닌 현재 구현 설정입니다.';
+        document.getElementById('coverageSummary').textContent = `요청 한도: 문서 ${settings[0].value}개(실패·iframe 포함), 깊이 ${settings[1].value}, ${settings[2].value}분. 공모전 지정 문서 한도가 아닌 구현 설정입니다.`;
       }
 
       function renderCoverage(data) {
@@ -181,12 +261,13 @@
           return;
         }
         const reasons = { max_pages: '문서 수 한도', max_depth: '링크 깊이 한도',
-          total_timeout: '공유 시간 예산', not_collected: '수집하지 못함',
+          total_timeout: '공유 시간 예산', user_cancelled: '사용자 중단', attachment: '첨부파일 대상 제외',
+          redirect_link: '바로 이동 링크 대신 본문 보기 경로 사용', non_readonly: '작성·수정·삭제 등 작업 링크 제외', not_collected: '수집하지 못함',
           max_iframe_depth: 'iframe 깊이 한도', frame_unavailable: 'iframe 접근 불가',
           frame_not_loaded: 'iframe 로드 미완료', unsupported_or_external_src: '외부 범위 또는 미지원 iframe',
           frame_cycle: 'iframe 순환' };
         const labels = { analyzed: '수집 성공 · 탐지 완료', collection_failed: '수집 실패',
-          not_analyzed: '수집 성공 · 탐지 미완료(시간 예산)' };
+          not_analyzed: '수집 성공 · 탐지 미완료(중단 또는 시간 예산)' };
         document.getElementById('coverageSummary').textContent =
           `문서 수집 시도 ${coverage.attempted_documents}개 · 수집 성공 ${coverage.collected_documents}개 · 탐지 완료 ${coverage.analyzed_documents}개 · 수집 실패 ${coverage.failed_documents}개 · 발견했지만 미방문한 URL ${coverage.unvisited_known_urls}개. 한도: 문서 ${coverage.limits.max_documents}개, 깊이 ${coverage.limits.max_depth}, ${coverage.limits.total_timeout_sec}초. 사이트 전체 대비 검사율은 알 수 없습니다.`;
         addText(container, 'h3', '수집·분석 문서 (iframe은 위치별 집계)');
@@ -195,6 +276,7 @@
           addText(card, 'p', `${labels[item.status] || item.status} · 깊이 ${item.depth}`);
           addText(card, 'p', item.url, 'location');
           if (item.requested_url !== item.url) addText(card, 'p', `요청 URL: ${item.requested_url}`, 'location');
+          if (item.source_link && item.source_link !== item.requested_url) addText(card, 'p', `발견 링크: ${item.source_link}`, 'location');
           if (item.frame_path.length) addText(card, 'p', `iframe 위치: ${item.frame_path.join(' >>> ')}`, 'location');
           if (item.reason) addText(card, 'p', item.reason);
         }
@@ -289,7 +371,7 @@
         downloadContentButton.disabled = true;
         downloadExtraButton.disabled = true;
         const url = urlInput.value.trim();
-        if (!url) {
+        if (!url && !activeJobId) {
           status.textContent = 'URL을 입력해 주세요.';
           output.textContent = '결과가 여기에 표시됩니다.';
           return;
@@ -297,20 +379,36 @@
 
         analyzeButton.disabled = true;
         collectionMode.disabled = true;
+        urlInput.disabled = true;
+        settings.forEach(input => { input.disabled = true; });
+        cancelButton.disabled = !activeJobId;
+        jobStatus.textContent = activeJobId ? '기존 작업의 진행 상태를 다시 확인합니다.' : '분석 작업을 시작합니다.';
+        jobProgress.hidden = false;
+        jobProgress.removeAttribute('value');
         status.textContent = '탐지 중...';
         clearResults('분석 중입니다.');
         output.textContent = '요청을 보냈습니다.';
 
         try {
-          const response = await fetch('/api/analyze', {
+          if (!activeJobId) {
+            const created = await requestJson('/api/jobs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, collection_mode: collectionMode.value })
+            body: JSON.stringify({ url, collection_mode: collectionMode.value,
+              max_pages: Number(settings[0].value), max_depth: Number(settings[1].value),
+              total_timeout_sec: Number(settings[2].value) * 60, prioritize_boards: true })
           });
-
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.detail || '분석 실패');
+            setJobId(created.id);
+            cancelButton.disabled = false;
+          }
+          const job = await waitForJob();
+          const data = job.result;
+          if (!data) {
+            const message = '사용자 중단: 완료한 문서가 없어 새 결과를 만들지 않았습니다. 이전 결과 파일은 유지합니다.';
+            clearResults(message);
+            output.textContent = message;
+            status.textContent = '사용자 중단';
+            return;
           }
 
           lastAnalysis = data;
@@ -320,14 +418,20 @@
           downloadExtraButton.disabled = !data.result_extra_json;
           const partial = (data.warnings || []).some(warning => !warning.startsWith('분석 이력을 저장하지 못했습니다.'));
           const completion = partial ? '수집 범위 분석 종료(일부 범위 미분석)' : '수집 범위 분석 종료';
-          status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개, 4종 제출 후보 ${(data.result_json?.findings || []).length}개`;
+          status.textContent = `${job.status === 'cancelled' ? '사용자 중단 · ' : ''}${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개, 4종 제출 후보 ${(data.result_json?.findings || []).length}개`;
         } catch (error) {
+          if (error.status === 404) setJobId(null);
           clearResults(`분석 실패: ${error.message}`);
           output.textContent = error.message;
           status.textContent = '오류 발생';
         } finally {
           analyzeButton.disabled = false;
-          collectionMode.disabled = false;
+          collectionMode.disabled = Boolean(activeJobId);
+          urlInput.disabled = Boolean(activeJobId);
+          settings.forEach(input => { input.disabled = Boolean(activeJobId); });
+          analyzeButton.textContent = activeJobId ? '진행 확인 재시도' : '탐지 실행';
+          cancelButton.disabled = !activeJobId;
+          if (!activeJobId && !lastAnalysis) jobProgress.hidden = true;
         }
       });
 

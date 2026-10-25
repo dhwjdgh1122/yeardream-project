@@ -8,14 +8,19 @@ const html = fs.readFileSync(path.join(__dirname, '../frontend/static/index.html
 const elements = {};
 for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode', 'download', 'downloadContent', 'downloadExtra',
   'summary', 'warnings', 'findingCards', 'contentCards', 'findingHeading', 'contentHeading', 'rawDetails',
-  'coverageSummary', 'coverageDetails', 'coverageDocuments']) {
+  'coverageSummary', 'coverageDetails', 'coverageDocuments', 'maxPages', 'maxDepth', 'timeBudget',
+  'jobProgress', 'jobStatus', 'cancelJob']) {
   elements[id] = { value: '', textContent: '', disabled: false, handlers: {},
     children: [], appendChild(node) { this.children.push(node); }, replaceChildren() { this.children = []; },
+    removeAttribute(name) { delete this[name]; },
     addEventListener(event, callback) { this.handlers[event] = callback; } };
 }
 elements.url.value = 'https://example.com';
 elements.techniqueFilter.value = 'ALL';
 elements.collectionMode.value = 'static';
+elements.maxPages.value = '100';
+elements.maxDepth.value = '4';
+elements.timeBudget.value = '25';
 elements.download.disabled = true;
 elements.downloadContent.disabled = true;
 elements.downloadExtra.disabled = true;
@@ -46,6 +51,8 @@ response.coverage = {
   excluded_frames: [{ source_url: response.url, location: 'iframe#external', reason: 'unsupported_or_external_src' }]
 };
 let fail = false;
+let terminalStatus = 'completed';
+let includeResult = true;
 const downloads = [];
 const objectUrls = new Map();
 const cleanup = [];
@@ -68,7 +75,11 @@ const context = vm.createContext({
     },
   },
   fetch: async (url, options) => {
-    assert.equal(url, '/api/analyze');
+    if (url === '/api/jobs/fixture') return { ok: true, json: async () => ({ id: 'fixture', status: terminalStatus,
+      elapsed_seconds: 1.2, request: { max_pages: 100 }, progress: { phase: terminalStatus,
+        collected_documents: 2, analyzed_documents: 1, failed_documents: 0, pending_documents: 1 },
+      result: includeResult ? response : null }) };
+    assert.equal(url, '/api/jobs');
     assert.equal(options.method, 'POST');
     assert.equal(elements.analyze.disabled, true);
     assert.equal(elements.collectionMode.disabled, true);
@@ -77,7 +88,8 @@ const context = vm.createContext({
     assert.equal(elements.downloadExtra.disabled, true);
     assert.equal(JSON.parse(options.body).collection_mode, elements.collectionMode.value);
     if (fail) throw new Error('Fixture failure');
-    return { ok: true, json: async () => response };
+    assert.equal(JSON.parse(options.body).max_pages, 100);
+    return { ok: true, json: async () => ({ id: 'fixture' }) };
   },
 });
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
@@ -176,6 +188,14 @@ async function run() {
   elements.download.handlers.click();
   assert.deepEqual(JSON.parse(await downloads[2].blob.text()), response.result_json);
   cleanup.splice(0).forEach(callback => callback());
+  terminalStatus = 'cancelled';
+  includeResult = false;
+  await elements.analyze.handlers.click();
+  assert.equal(elements.status.textContent, '사용자 중단');
+  assert.equal(elements.download.disabled, true);
+  assert.equal(elements.findingCards.children.length, 0);
+  terminalStatus = 'completed';
+  includeResult = true;
   elements.url.value = '  ';
   await elements.analyze.handlers.click();
   assert.equal(elements.download.disabled, true);

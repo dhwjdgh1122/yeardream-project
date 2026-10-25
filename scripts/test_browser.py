@@ -13,6 +13,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from playwright.sync_api import sync_playwright
+from browser_jobs import ui_job_result
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.app import main
@@ -134,6 +135,9 @@ def run():
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(base)
+                    page.locator('#maxPages').fill('8')
+                    page.locator('#maxDepth').fill('2')
+                    page.locator('#timeBudget').fill('1')
                     assert page.locator('#download').is_disabled()
                     assert page.locator('#downloadContent').is_disabled()
                     assert page.locator('#downloadExtra').is_disabled()
@@ -161,12 +165,11 @@ def run():
 
                     def analyze(name, expected_status=200):
                         page.locator('#url').fill(f'{base}/fixtures/{name}')
-                        with page.expect_response(lambda response: response.url == base + '/api/analyze') as pending:
+                        with page.expect_response(lambda response: response.url == base + '/api/jobs') as pending:
                             page.locator('#analyze').click()
                         response = pending.value
-                        assert response.status == expected_status, response.text()
-                        page.wait_for_function("!document.querySelector('#analyze').disabled")
-                        data = response.json()
+                        response_status, data = ui_job_result(page, response)
+                        assert response_status == expected_status, data
                         if expected_status == 200:
                             assert json.loads(main.result_path.with_name('result_extra.json').read_bytes()) == data['result_extra_json']
                         return data

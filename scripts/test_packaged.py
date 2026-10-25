@@ -16,10 +16,13 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from playwright.sync_api import sync_playwright
+from browser_jobs import ui_job_result
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/cancel-slow':
+            time.sleep(2)
         documents = {
             '/static': '<p id="ad" style="opacity:0">카지노 가입 보너스</p><p style="opacity:0">메뉴</p>',
             '/dynamic': '''<!doctype html><style>.hidden{opacity:0}</style><body><script>
@@ -31,6 +34,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
             '/chat': '<p>Google 강좌 수료 후 받은 우산 후기. 구글 직원인 줄 알려나? ㅋㅋ</p>',
             '/search-ad': '<p>먹튀검증 구글검색 커뮤니티A</p>',
             '/search-warning': '<p>토토사이트 구글검색을 하지 마세요.</p>',
+            '/cancel-root': '<p style="opacity:0">카지노 가입 보너스</p><a href="/cancel-slow">Next</a>',
+            '/cancel-slow': '<p>Slow fixture</p>',
         }
         self.send_response(200 if self.path in documents else 500)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -142,13 +147,13 @@ def run():
                             page.goto(base)
                             page.locator('#url').fill(fixture_base + '/dynamic')
                             page.locator('#collectionMode').select_option('browser')
-                            with page.expect_response('**/api/analyze', timeout=70000) as response:
+                            with page.expect_response('**/api/jobs', timeout=70000) as response:
                                 page.locator('#analyze').click()
-                            assert response.value.status == 200, response.value.text()
-                            dynamic = response.value.json()
+                            response_status, dynamic = ui_job_result(page, response.value)
+                            assert response_status == 200, dynamic
                             assert dynamic['coverage']['analyzed_documents'] == 1
                             assert dynamic['coverage']['website_complete'] is False
-                            assert dynamic['coverage']['limits']['max_documents'] == 8
+                            assert dynamic['coverage']['limits']['max_documents'] == 100
                             assert {f['technique'] for f in dynamic['result_json']['findings']} == {'TRANSPARENT'}
                             assert dynamic['result_json']['findings'][0]['evidence_text'] == '성인영상 무료시청'
                             assert page.locator('#findingCards article').count() == 1
@@ -176,6 +181,25 @@ def run():
                             check_files(bundle, dynamic)
                             assert (directory / 'local-app-data' / 'YearDream' / 'history.sqlite3').is_file()
                             assert not (bundle / 'history.sqlite3').exists()
+                            page.goto(base)
+                            page.locator('#url').fill(fixture_base + '/cancel-root')
+                            with page.expect_response('**/api/jobs') as created:
+                                page.locator('#analyze').click()
+                            job_id = created.value.json()['id']
+                            limit = time.monotonic() + 10
+                            while time.monotonic() < limit:
+                                progress = request_json(base + '/api/jobs/' + job_id)
+                                if progress['progress']['analyzed_documents'] >= 1:
+                                    break
+                                time.sleep(.05)
+                            else:
+                                raise AssertionError('Packaged live progress did not advance')
+                            page.locator('#cancelJob').click()
+                            page.wait_for_function("!document.querySelector('#analyze').disabled")
+                            cancelled = request_json(base + '/api/jobs/' + job_id)
+                            assert cancelled['status'] == 'cancelled' and cancelled['result']
+                            assert cancelled['result']['coverage']['analyzed_documents'] == 1
+                            check_files(bundle, cancelled['result'])
                         finally:
                             browser.close()
                     chat = request_json(base + '/api/analyze', {'url': fixture_base + '/chat', 'max_depth': 0})
@@ -211,7 +235,8 @@ def run():
                    'health/UI/OpenAPI', 'port collision', 'static selection', 'failure preserves files',
                    'packaged Edge JS/computed CSS', 'readable cards/collapsed JSON', 'no uncalibrated confidence',
                    'chat laughter excluded', 'search promotion vs prohibition', 'UI downloads', 'empty results', 'output beside exe',
-                   'isolated SQLite history', 'packaged review UI persistence', 'review preserves result JSON'],
+                   'isolated SQLite history', 'packaged review UI persistence', 'review preserves result JSON',
+                   'job settings/progress', 'partial user cancellation'],
     }
     if args.report:
         with args.report.open('x', encoding='utf-8') as stream:

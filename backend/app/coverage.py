@@ -1,7 +1,9 @@
 """Describe observed crawl/detection coverage without claiming website completeness."""
 
 
-def build_coverage(pages, analyzed, *, max_pages, max_depth, timeout_sec):
+def build_coverage(pages, analyzed, *, max_pages, max_depth, timeout_sec, prioritize_boards=False):
+    from .crawler import page_identity
+    identity = page_identity if prioritize_boards else lambda url: url
     pages = [*pages, *(p['interrupted_context'] for p in pages if p.get('interrupted_context'))]
     analyzed_ids = {id(page) for page in analyzed}
     documents = []
@@ -12,10 +14,11 @@ def build_coverage(pages, analyzed, *, max_pages, max_depth, timeout_sec):
         p['crawl_stop_reason'] for p in pages if p.get('crawl_stop_reason')))
     for page in pages:
         if not page.get('frame_path'):
-            visited.update([page['url'], page.get('requested_url', page['url'])])
+            visited.update([identity(page['url']), identity(page.get('requested_url', page['url']))])
         collected = 'error' not in page
         documents.append(dict(
             url=page['url'], requested_url=page.get('requested_url', page['url']),
+            source_link=page.get('source_link'),
             parent_url=page.get('parent_url'), depth=page.get('depth', 0),
             frame_path=page.get('frame_path', []),
             status=('collection_failed' if not collected else
@@ -43,9 +46,11 @@ def build_coverage(pages, analyzed, *, max_pages, max_depth, timeout_sec):
                                               source_url=item.get('parent_url'), reason=reason)
 
     unvisited = []
+    unvisited_keys = set()
     for url, item in discovered.items():
-        if url in visited:
+        if identity(url) in visited or identity(url) in unvisited_keys:
             continue
+        unvisited_keys.add(identity(url))
         if item['reason'] == 'not_collected' and stop_reasons:
             item['reason'] = stop_reasons[-1]
         unvisited.append(item)

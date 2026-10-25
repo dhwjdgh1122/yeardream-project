@@ -10,6 +10,7 @@ from pathlib import Path
 
 import uvicorn
 from playwright.sync_api import sync_playwright
+from browser_jobs import ui_job_result
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.app import main
@@ -44,11 +45,11 @@ def run():
                     page.wait_for_function("document.querySelector('#message').textContent.includes('저장된 분석이 없습니다')")
                     page.goto(base)
                     page.locator('#url').fill('https://example.com')
-                    with page.expect_response('**/api/analyze') as result:
+                    with page.expect_response('**/api/jobs') as result:
                         page.locator('#analyze').click()
                     response = result.value
-                    assert response.status == 200
-                    analysis = response.json()
+                    response_status, analysis = ui_job_result(page, response)
+                    assert response_status == 200
                     page.wait_for_function("document.querySelector('#coverageSummary').textContent.includes('미방문한 URL 1개')")
                     page.locator('#coverageDetails summary').click()
                     page.get_by_text('문서 수 한도: https://example.com/board?query=' + 'x' * 240 + ' (발견 문서: https://example.com)', exact=True).wait_for()
