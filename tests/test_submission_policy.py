@@ -57,7 +57,7 @@ def test_supported_feature_promotions_are_submitted(monkeypatch, tmp_path, html,
 
 
 @pytest.mark.parametrize('html', [
-    '<p>Привет, добро пожаловать</p>', '<p>ㅋㅋ 정말 재미있다</p>',
+    '<p>Привет, добро пожаловать</p>', '<p>ㅋ 정말 재미있다</p>',
     '<span style="opacity:0">메뉴 열기</span>',
     '<p style="font-size:1px">도박 예방교육: 카지노 가입 보너스 광고에 주의하세요.</p>',
     '<p style="opacity:0">성인영상 무료시청 광고를 신고해주세요.</p>',

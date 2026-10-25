@@ -50,10 +50,31 @@
       .row {
         display: flex;
         gap: 12px;
+        flex-wrap: wrap;
       }
       .status {
         margin-top: 12px;
         font-weight: 600;
+      }
+      .summary { margin-top: 20px; padding: 14px; background: #eff6ff; border-radius: 8px; }
+      .finding-card { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; margin: 12px 0; }
+      .finding-card h3 { margin: 0 0 10px; font-size: 17px; }
+      .finding-card p { margin: 8px 0; overflow-wrap: anywhere; }
+      .finding-card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto;
+        padding: 12px; background: #f3f4f6; border-radius: 6px; font-family: inherit; }
+      .included { border-left: 5px solid #2563eb; }
+      .review { border-left: 5px solid #d97706; }
+      .location { font-family: monospace; font-size: 13px; }
+      .muted { color: #4b5563; }
+      #warnings { color: #92400e; }
+      details { margin-top: 20px; }
+      summary { cursor: pointer; }
+      select { max-width: 100%; padding: 10px; }
+      #url { min-width: 160px; }
+      @media (max-width: 600px) {
+        .container { margin: 10px auto; padding: 10px; }
+        .card { padding: 14px; }
+        .row > * { flex: 1 1 100%; box-sizing: border-box; }
       }
     </style>
   </head>
@@ -79,16 +100,28 @@
           <button id="analyze">탐지 실행</button>
         </div>
         <p>동적 페이지 분석은 JavaScript로 생성되는 내용과 브라우저에 적용된 숨김 스타일을 확인합니다. 스크롤·클릭이 필요한 내용과 늦게 표시되는 내용은 포함되지 않을 수 있습니다.</p>
-        <div class="status" id="status">대기 중</div>
+        <div class="status" id="status" role="status">대기 중</div>
         <p>
           <button id="download" disabled>JSON 다운로드</button>
           <button id="downloadContent" disabled>광고 후보 다운로드</button>
           <button id="downloadExtra" disabled>추가 탐지 결과 다운로드</button>
         </p>
+        <details>
+          <summary>결과 파일과 판정 기준 안내</summary>
         <p>JSON 다운로드는 4종 위장·은닉 결과, 광고 후보 다운로드는 내용 판별 결과를 저장합니다. 화면 필터와 관계없이 전체 결과를 저장합니다. 광고 후보는 검토가 필요하며 부분 분석 안내도 확인해 주세요.</p>
         <p>추가 탐지 결과 다운로드는 광고 후보를 result_extra.json으로 저장합니다. 후보 검출은 불법 여부의 확정 판정이 아닙니다.</p>
         <p>4종 제출 결과에는 관련 홍보 표현이 확인된 후보만 포함합니다. 근거가 부족한 특징은 검토 대상으로 화면에 남으며, 정상으로 확정한 결과가 아닙니다.</p>
-        <div class="result" id="output">결과가 여기에 표시됩니다.</div>
+        </details>
+        <div class="summary" id="summary">분석 후 발견 문구와 검토 이유가 표시됩니다.</div>
+        <ul id="warnings" aria-label="분석 경고"></ul>
+        <h2 id="findingHeading">위장·은닉 특징</h2>
+        <div id="findingCards"></div>
+        <h2 id="contentHeading">홍보 내용 후보</h2>
+        <div id="contentCards"></div>
+        <details id="rawDetails">
+          <summary>상세 JSON 보기</summary>
+          <pre class="result" id="output">결과가 여기에 표시됩니다.</pre>
+        </details>
       </div>
     </div>
 
@@ -103,6 +136,58 @@
       const downloadContentButton = document.getElementById('downloadContent');
       const downloadExtraButton = document.getElementById('downloadExtra');
       let lastAnalysis = null;
+
+      const techniqueLabels = { HOMOGLYPH: '닮은꼴 문자', JAMO: '자모 분리',
+        TRANSPARENT: '투명·은닉 스타일', OFFSCREEN: '화면 밖·숨김 배치' };
+      const categoryLabels = { GAMBLING: '도박 홍보', ADULT_CONTENT: '성인물 홍보' };
+
+      function addText(parent, tag, text, className = '') {
+        const node = document.createElement(tag);
+        node.textContent = text;
+        node.className = className;
+        parent.appendChild(node);
+        return node;
+      }
+
+      function clearResults(message) {
+        document.getElementById('summary').textContent = message;
+        for (const id of ['findingCards', 'contentCards', 'warnings']) {
+          document.getElementById(id).replaceChildren();
+        }
+        document.getElementById('findingHeading').textContent = '위장·은닉 특징';
+        document.getElementById('contentHeading').textContent = '홍보 내용 후보';
+        document.getElementById('rawDetails').open = false;
+      }
+
+      function renderCards(findings, candidates) {
+        const featureList = document.getElementById('findingCards');
+        const contentList = document.getElementById('contentCards');
+        featureList.replaceChildren();
+        contentList.replaceChildren();
+        document.getElementById('findingHeading').textContent = `위장·은닉 특징 (${findings.length}개)`;
+        document.getElementById('contentHeading').textContent = `홍보 내용 후보 (${candidates.length}개)`;
+        for (const item of findings) {
+          const included = item.submission_status === 'included';
+          const card = addText(featureList, 'article', '', `finding-card ${included ? 'included' : 'review'}`);
+          addText(card, 'h3', `${techniqueLabels[item.technique] || item.technique} (${item.technique}) · ${included ? '제출 후보' : '검토 필요'}`);
+          addText(card, 'pre', item.source_text || item.evidence);
+          addText(card, 'p', item.submission_reason || '관련 근거를 확인해 주세요.');
+          addText(card, 'p', `탐지 설명: ${(item.evidence || '').split(' 원문: ')[0]}`, 'muted');
+          addText(card, 'p', `페이지: ${item.url || ''}`, 'location');
+          addText(card, 'p', `위치: ${item.location}`, 'location');
+        }
+        for (const item of candidates) {
+          const card = addText(contentList, 'article', '', 'finding-card review');
+          addText(card, 'h3', `${categoryLabels[item.category] || item.category} · 검토 필요`);
+          addText(card, 'pre', item.source_text || item.evidence || '');
+          addText(card, 'p', `일치 표현: ${(item.matched_terms || []).join(', ')}`);
+          addText(card, 'p', '홍보 내용 후보이며 불법 여부를 확정한 결과가 아닙니다.');
+          addText(card, 'p', `페이지: ${item.url || ''}`, 'location');
+          addText(card, 'p', `위치: ${item.location}`, 'location');
+        }
+        if (!findings.length) addText(featureList, 'p', '현재 필터에 해당하는 특징이 없습니다.', 'muted');
+        if (!candidates.length) addText(contentList, 'p', '현재 필터에 해당하는 홍보 후보가 없습니다.', 'muted');
+      }
 
       function renderFindings(data) {
         const filter = techniqueFilter.value;
@@ -130,15 +215,22 @@
             submissionStatus: item.submission_status || 'needs_review',
             submissionReason: item.submission_reason || '',
             submissionCategories: item.submission_categories || [],
-            confidence: item.confidence
+            sourceText: item.source_text || ''
           }))
         };
 
         output.textContent = JSON.stringify(summary, null, 2);
+        document.getElementById('summary').textContent =
+          `수집 문서 ${data.crawled_pages.length}개 · 전체 특징 ${data.findings.length}개 · 4종 제출 후보 ${(data.result_json?.findings || []).length}개 · 현재 표시 특징 ${findings.length}개 / 홍보 후보 ${contentCandidates.length}개. 0건은 광고 부재를 뜻하지 않습니다.`;
+        const warningList = document.getElementById('warnings');
+        warningList.replaceChildren();
+        for (const warning of data.warnings || []) addText(warningList, 'li', warning);
+        renderCards(findings, contentCandidates);
       }
 
       analyzeButton.addEventListener('click', async () => {
         lastAnalysis = null;
+        clearResults('분석 후 발견 문구와 검토 이유가 표시됩니다.');
         downloadButton.disabled = true;
         downloadContentButton.disabled = true;
         downloadExtraButton.disabled = true;
@@ -152,6 +244,7 @@
         analyzeButton.disabled = true;
         collectionMode.disabled = true;
         status.textContent = '탐지 중...';
+        clearResults('분석 중입니다.');
         output.textContent = '요청을 보냈습니다.';
 
         try {
@@ -174,6 +267,7 @@
           const completion = data.warnings?.length ? '분석 완료(일부 범위 미분석)' : '분석 완료';
           status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개, 4종 제출 후보 ${(data.result_json?.findings || []).length}개`;
         } catch (error) {
+          clearResults(`분석 실패: ${error.message}`);
           output.textContent = error.message;
           status.textContent = '오류 발생';
         } finally {

@@ -6,8 +6,10 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../frontend/static/index.html'), 'utf8');
 const elements = {};
-for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode', 'download', 'downloadContent', 'downloadExtra']) {
+for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode', 'download', 'downloadContent', 'downloadExtra',
+  'summary', 'warnings', 'findingCards', 'contentCards', 'findingHeading', 'contentHeading', 'rawDetails']) {
   elements[id] = { value: '', textContent: '', disabled: false, handlers: {},
+    children: [], appendChild(node) { this.children.push(node); }, replaceChildren() { this.children = []; },
     addEventListener(event, callback) { this.handlers[event] = callback; } };
 }
 elements.url.value = 'https://example.com';
@@ -19,7 +21,8 @@ elements.downloadExtra.disabled = true;
 const response = {
   url: elements.url.value, page_title: 'Fixture', crawled_pages: [elements.url.value],
   findings: [
-    { technique: 'JAMO', selector: 'div#a', location: 'div#a', evidence: 'A', submission_status: 'included',
+    { technique: 'JAMO', selector: 'div#a', location: 'div#a', evidence: 'A', source_text: '<img src=x onerror=alert(1)>',
+      confidence: 0.99, submission_status: 'included',
       submission_reason: 'Matched promotion', submission_categories: ['GAMBLING'] },
     { technique: 'TRANSPARENT', selector: 'div#b', location: 'div#b', evidence: 'B', submission_status: 'needs_review',
       submission_reason: 'No relevant promotion', submission_categories: [] },
@@ -48,8 +51,8 @@ const context = vm.createContext({
     getElementById: id => elements[id],
     body: { appendChild(link) { link.attached = true; } },
     createElement(tag) {
-      assert.equal(tag, 'a');
       return {
+        tag, textContent: '', children: [], appendChild(node) { this.children.push(node); },
         click() { assert.ok(this.attached); downloads.push({ filename: this.download, blob: objectUrls.get(this.href) }); },
         remove() { this.attached = false; },
       };
@@ -80,6 +83,13 @@ async function run() {
   assert.equal(JSON.parse(elements.output.textContent).totalSubmittedFindings, 1);
   assert.equal(JSON.parse(elements.output.textContent).totalNeedsReviewFindings, 1);
   assert.equal(JSON.parse(elements.output.textContent).submissionPolicyVersion, 'feature-content-policy-v1');
+  assert.equal(elements.findingCards.children.length, 2);
+  assert.equal(elements.findingCards.children[0].children[1].textContent, response.findings[0].source_text);
+  assert.ok(elements.findingCards.children[0].children[0].textContent.includes('제출 후보'));
+  assert.ok(elements.findingCards.children[1].children[0].textContent.includes('검토 필요'));
+  assert.equal(elements.rawDetails.open, false);
+  assert.ok(!elements.output.textContent.includes('confidence'));
+  assert.ok(elements.summary.textContent.includes('0건은 광고 부재를 뜻하지 않습니다'));
   for (const [filter, count] of [['JAMO', 1], ['OFFSCREEN', 0], ['TRANSPARENT', 1], ['ALL', 2]]) {
     elements.techniqueFilter.value = filter;
     elements.techniqueFilter.handlers.change();
@@ -117,11 +127,16 @@ async function run() {
   elements.collectionMode.value = 'browser';
   await elements.analyze.handlers.click();
   assert.deepEqual(JSON.parse(elements.output.textContent).warnings, response.warnings);
+  assert.equal(elements.warnings.children[0].textContent, response.warnings[0]);
   fail = true;
   await elements.analyze.handlers.click();
   assert.equal(elements.analyze.disabled, false);
   assert.equal(elements.collectionMode.disabled, false);
   assert.equal(elements.output.textContent, 'Fixture failure');
+  assert.ok(elements.summary.textContent.includes('Fixture failure'));
+  assert.equal(elements.findingCards.children.length, 0);
+  assert.equal(elements.contentCards.children.length, 0);
+  assert.equal(elements.warnings.children.length, 0);
   assert.equal(elements.download.disabled, true);
   assert.equal(elements.downloadContent.disabled, true);
   assert.equal(elements.downloadExtra.disabled, true);

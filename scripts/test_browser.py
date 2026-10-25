@@ -97,7 +97,7 @@ DOCUMENTS = {
         <p id="policy-transparent" class="policy-hidden">카지노 가입 보너스</p>
         <p id="policy-offscreen" style="font-size:1px">성인영상 무료시청</p>
         <p id="policy-menu" class="policy-hidden">메뉴 열기</p>
-        <p id="policy-foreign">Привет</p><p id="policy-chat">ㅋㅋ 반가워</p>
+        <p id="policy-foreign">Привет &lt;img src=x onerror="window.__injected=true"&gt;</p><p id="policy-chat">ㅋㅋ 반가워</p>
         <p>카지노 가입 보너스. <span id="policy-unrelated" class="policy-hidden">메뉴</span></p>''',
 }
 
@@ -192,12 +192,12 @@ def run():
                     print('Browser locations passed: tables, escaped IDs, repeated/nested frames, srcdoc')
                     for technique in ['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN', 'ALL']:
                         page.locator('#techniqueFilter').select_option(technique)
-                        summary = json.loads(page.locator('#output').inner_text())
+                        summary = json.loads(page.locator('#output').text_content())
                         expected = [f for f in data['findings'] if technique == 'ALL' or f['technique'] == technique]
                         assert summary['totalFindings'] == len(expected)
                         assert all(f['evidence'] for f in summary['findings'])
                     page.locator('#techniqueFilter').select_option('JAMO')
-                    assert json.loads(page.locator('#output').inner_text())['totalFindings'] == 1
+                    assert json.loads(page.locator('#output').text_content())['totalFindings'] == 1
                     download_json(data, 'filtered-full')
                     # Another client may replace the shared server file; this page retains its own result.
                     other = page.request.post(base + '/api/analyze', data={'url': base + '/fixtures/clean'})
@@ -210,7 +210,7 @@ def run():
                     assert page.locator('#download').is_disabled()
                     assert main.result_path.read_bytes() == previous
                     page.locator('#techniqueFilter').select_option('ALL')
-                    assert '수집하지 못했습니다' in page.locator('#output').inner_text()
+                    assert '수집하지 못했습니다' in page.locator('#output').text_content()
                     clean = analyze('clean')
                     assert clean['findings'] == [] and not clean['warnings']
                     assert '위장·은닉 0개, 광고 후보 0개' in page.locator('#status').inner_text()
@@ -225,7 +225,7 @@ def run():
                     assert len(runtime['findings']) == 11, runtime
                     assert not runtime['warnings'], runtime['warnings']
                     assert json.loads(main.result_path.read_text(encoding='utf-8')) == runtime['result_json']
-                    assert json.loads(page.locator('#output').inner_text())['collectionMode'] == 'browser'
+                    assert json.loads(page.locator('#output').text_content())['collectionMode'] == 'browser'
                     download_json(runtime, 'dynamic-full')
                     assert any('Fetched comment' in f['evidence'] for f in runtime['findings'])
                     assert any('Insertion 1' in f['evidence'] for f in runtime['findings'])
@@ -285,7 +285,7 @@ def run():
                     assert {item['location'] for item in content['content_candidates']} == {'p#gamble', 'p#adult'}
                     for category in ['GAMBLING', 'ADULT_CONTENT']:
                         page.locator('#techniqueFilter').select_option(category)
-                        summary = json.loads(page.locator('#output').inner_text())
+                        summary = json.loads(page.locator('#output').text_content())
                         assert summary['totalContentCandidates'] == 1
                         assert summary['totalFindings'] == 0
                     with page.expect_download() as pending:
@@ -297,7 +297,7 @@ def run():
                     report = json.loads(path.read_text(encoding='utf-8'))
                     assert report['candidates'] == content['content_candidates']
                     assert report['purpose'] == 'content_candidate_review'
-                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v3'
+                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v4'
                     download_json(content, 'content-four-technique-json')
                     analyze('missing', 502)
                     assert page.locator('#downloadContent').is_disabled()
@@ -365,22 +365,39 @@ def run():
                     assert replay['submission_candidate_count'] == 1
                     page.locator('#techniqueFilter').select_option('ALL')
                     policy = analyze('policy')
-                    assert len(policy['findings']) == 8, policy
+                    assert len(policy['findings']) == 7, policy
                     assert {item['technique'] for item in policy['result_json']['findings']} == {
                         'HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN'}
                     assert len(policy['result_json']['findings']) == 4
-                    assert sum(item['submission_status'] == 'needs_review' for item in policy['findings']) == 4
+                    assert sum(item['submission_status'] == 'needs_review' for item in policy['findings']) == 3
+                    assert not any('policy-chat' in item['location'] for item in policy['findings'])
+                    assert page.locator('#findingCards article').count() == 7
+                    assert page.locator('#findingCards .included').count() == 4
+                    assert page.locator('#findingCards .review').count() == 3
+                    assert page.locator('#rawDetails').get_attribute('open') is None
+                    assert not page.locator('#output').is_visible()
+                    assert 'confidence' not in policy['findings'][0]
+                    assert 'ㅋㅏㅈㅣㄴㅗ' in page.locator('#findingCards').inner_text()
+                    assert '<img src=x' in page.locator('#findingCards').inner_text()
+                    assert page.locator('#findingCards img').count() == 0
+                    assert page.evaluate('window.__injected !== true')
                     assert any('ㅋㅏㅈㅣㄴㅗ' in item['evidence_text'] for item in policy['result_json']['findings'])
-                    policy_summary = json.loads(page.locator('#output').inner_text())
+                    policy_summary = json.loads(page.locator('#output').text_content())
                     assert policy_summary['totalSubmittedFindings'] == 4
-                    assert policy_summary['totalNeedsReviewFindings'] == 4
+                    assert policy_summary['totalNeedsReviewFindings'] == 3
+                    page.set_viewport_size({'width': 390, 'height': 844})
+                    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                    page.set_viewport_size({'width': 1100, 'height': 950})
+                    screenshot = Path(__file__).resolve().parents[1] / '.validation' / 'result-cards-20261025.png'
+                    screenshot.parent.mkdir(exist_ok=True)
+                    page.screenshot(path=str(screenshot), full_page=True)
                     download_json(policy, 'policy-selected')
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
                     print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')
                     print('Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled')
                     print('Content checks passed: promotion candidates, education exclusion, category filters, separate full download, original result schema')
                     print('Computed styles passed: classes, external CSS, solid background, inherited hiding/font, negative geometry, visible overrides/shadow/stroke, styled iframe, saved offline replay')
-                    print('Submission policy passed: 4 attributed feature promotions, 4 retained review findings, original evidence, separate submitted counts/downloads')
+                    print('Submission policy passed: 4 attributed promotions, 3 review findings, laughter excluded, readable cards, collapsed JSON, original evidence/downloads')
         finally:
             server.should_exit = True
             thread.join(timeout=10)

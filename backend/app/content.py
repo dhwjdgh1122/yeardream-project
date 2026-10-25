@@ -9,7 +9,7 @@ from .textnorm import normalize_mapped
 from .detection import HOMOGLYPH_PATTERN, JAMO_PATTERN
 from .comparison import evaluation_url_key
 
-POLICY_VERSION = 'content-rules-v3'
+POLICY_VERSION = 'content-rules-v4'
 BLOCKS = {'body', 'main', 'article', 'section', 'aside', 'nav', 'header', 'footer',
           'div', 'p', 'li', 'td', 'th', 'blockquote', 'figcaption', 'pre',
           'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}

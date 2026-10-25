@@ -28,6 +28,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                   p.textContent='성인영상 무료시청';document.body.append(p);
                 });</script></body>''',
             '/clean': '<p>정상 안내</p>',
+            '/chat': '<p>Google 강좌 수료 후 받은 우산 후기. 구글 직원인 줄 알려나? ㅋㅋ</p>',
         }
         self.send_response(200 if self.path in documents else 500)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -117,6 +118,7 @@ def run():
                     assert '/api/analyze' in request_json(base + '/openapi.json')['paths']
                     data = request_json(base + '/api/analyze', {'url': fixture_base + '/static', 'max_depth': 0})
                     assert len(data['findings']) == 2 and len(data['result_json']['findings']) == 1
+                    assert all('confidence' not in item and item['source_text'] for item in data['findings'])
                     check_files(bundle, data)
                     before = {name: (bundle / name).read_bytes() for name in ('result.json', 'result_extra.json')}
                     for payload, status in [({'url': fixture_base, 'collection_mode': 'invalid'}, 422),
@@ -143,6 +145,8 @@ def run():
                             dynamic = response.value.json()
                             assert {f['technique'] for f in dynamic['result_json']['findings']} == {'TRANSPARENT'}
                             assert dynamic['result_json']['findings'][0]['evidence_text'] == '성인영상 무료시청'
+                            assert page.locator('#findingCards article').count() == 1
+                            assert page.locator('#rawDetails').get_attribute('open') is None
                             check_files(bundle, dynamic)
                             for button, key in [('#download', 'result_json'), ('#downloadExtra', 'result_extra_json')]:
                                 with page.expect_download() as download:
@@ -150,6 +154,9 @@ def run():
                                 assert json.loads(Path(download.value.path()).read_bytes()) == dynamic[key]
                         finally:
                             browser.close()
+                    chat = request_json(base + '/api/analyze', {'url': fixture_base + '/chat', 'max_depth': 0})
+                    assert chat['findings'] == [] and chat['content_candidates'] == []
+                    check_files(bundle, chat)
                     clean = request_json(base + '/api/analyze', {'url': fixture_base + '/clean', 'max_depth': 0})
                     assert clean['result_json']['findings'] == clean['result_extra_json']['findings'] == []
                     check_files(bundle, clean)
@@ -171,7 +178,8 @@ def run():
         'manifest_sha256': hashlib.sha256(manifest_raw).hexdigest(),
         'checks': ['bundle hashes', 'Korean/spaced path', 'unrelated cwd', 'Python removed from PATH',
                    'health/UI/OpenAPI', 'port collision', 'static selection', 'failure preserves files',
-                   'packaged Edge JS/computed CSS', 'UI downloads', 'empty results', 'output beside exe'],
+                   'packaged Edge JS/computed CSS', 'readable cards/collapsed JSON', 'no uncalibrated confidence',
+                   'chat laughter excluded', 'UI downloads', 'empty results', 'output beside exe'],
     }
     if args.report:
         with args.report.open('x', encoding='utf-8') as stream:

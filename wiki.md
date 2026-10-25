@@ -1,5 +1,11 @@
 # 공공 웹사이트 불법광고 탐지 도구 — 설계·규격
 
+### 일상 웃음 표현·결과 화면
+
+`jamo.py`의 연속 자모 구간 중 전체가 ㅋ/ㅎ 두 글자 이상인 경우만 JAMO에서 제외합니다. 단독 자음·다른 자모·모음/현대 자모는 유지하고 CSS 특징도 별도로 탐지합니다. textnorm.py도 같은 구간을 호환 자모로 보존해 앞 단어의 받침으로 합치지 않습니다(content-rules-v4). 원문/위치 범위는 유지합니다. capture·평가·검토 내보내기와 벤치마크는 공유 jamo 규칙 파일의 해시도 기록합니다.
+
+API Finding에서 검증되지 않은 고정 confidence를 제거하고 원문 source_text를 추가했습니다. 필수/추가 제출 파일 형식과 정책은 유지합니다. UI는 문구·유형·선택 상태·이유·URL/location 카드를 먼저 표시하고 상세 JSON은 details 안에 접어 둡니다. API에서 받은 문구·위치·경고는 textContent로만 삽입해 HTML로 실행하지 않습니다. 필터에 따른 카드/표시 건수와 전체 결과 건수를 구분하고 다운로드는 전체 응답에 연결합니다. 오류/새 요청에서는 이전 카드·경고를 비우고 오류 원인은 접힌 영역 밖에 표시합니다. 모바일 폭과 실제 Edge에서 카드/필터/다운로드/접힘을 검증합니다.
+
 ### Windows 배포 구조
 
 `run_app.py`는 소스/Windows 실행 파일 공통 진입점입니다. 쓰기 가능한 결과 경로를 확인하고 127.0.0.1 소켓을 먼저 확보한 다음 단일 Uvicorn 서버를 실행합니다. 서버 준비 후 기본 브라우저를 열며 `--no-browser`로 생략할 수 있습니다. 기본 포트 8000, `--port`로 변경하며 0이면 자동 선택합니다. GPU·외부 AI API는 필요하지 않습니다.
@@ -133,7 +139,7 @@ PDF 5쪽은 font-size 0~1px, position:absolute; left:-9999px, display:none을 OF
 
 위장·은닉 특징 발견과 광고 판정은 구분합니다. policy.py의 feature-content-policy-v1은 특징의 실제 원문 구간이 관련 홍보 주제/유도 표현 구간과 겹치는 경우만 자동 제출 후보로 선택합니다. 이것은 구현 정책이며 PDF가 키워드·임계값을 지정한 것은 아닙니다. 규칙상 true와 법적 위반 확정을 동일시하지 않으며 고정 feature confidence도 측정 정확도가 아닙니다. 실제 판정 정확도는 별도 검수가 필요합니다.
 
-2026-10-25 사용자 설명에 따라 도박·성인물 후보 판별을 구현했고 이후 PDF 1·5쪽에서도 범위를 확인했습니다. 실제 gen.go.kr 일반 표시 글의 공백에 대응한 v1·문장 문맥 v2를 거쳐 현재 content-rules-v3입니다. 표현/은닉 4종과 내용 범주는 독립적입니다. content_candidates는 검수용이고 result_extra.json은 PDF 13쪽의 ETC+extra_finding 형식입니다. 일반 표시 후보를 필수 4종으로 임의 분류하지 않으며 후보 부재도 광고 부재를 보장하지 않습니다.
+2026-10-25 사용자 설명에 따라 도박·성인물 후보 판별을 구현했고 이후 PDF 1·5쪽에서도 범위를 확인했습니다. 실제 gen.go.kr 일반 표시 글의 공백에 대응한 v1·문장 문맥 v2를 거쳐 현재 content-rules-v4입니다. 표현/은닉 4종과 내용 범주는 독립적입니다. content_candidates는 검수용이고 result_extra.json은 PDF 13쪽의 ETC+extra_finding 형식입니다. 일반 표시 후보를 필수 4종으로 임의 분류하지 않으며 후보 부재도 광고 부재를 보장하지 않습니다.
 
 v3는 텍스트를 가장 가까운 블록에 귀속해 inline 조각만 합치고 문단은 섞지 않습니다. 문장 경계와 주제 앞 45/뒤 100자의 규칙은 유지하며 도메인 내부 마침표를 경계로 만들지 않습니다. textnorm.py는 NFKC·현대 한글/호환 자모 재조합·제한된 키릴 닮은꼴→Latin 매핑·casefold·공백/일부 zero-width 제거를 판별용으로 적용합니다. 정규화 문자마다 원문 범위를 추적해 원문 자체는 바꾸지 않습니다. 카지노·성인물 등의 주제와 가입/보너스/시청/바로가기 등의 단서가 함께 필요합니다. PDF 예시의 mega-BET·슬롯 체험·먹튀검증/텔레그램 유도도 검증합니다. 예방교육·단속 보도·광고 신고/삭제 요청·피해상담 등 명시적 보호 문맥은 제외합니다. 전체 Unicode 위장·모든 자모 조합·은어·의미 이해를 지원하는 것은 아닙니다.
 
@@ -239,7 +245,7 @@ PDF 12쪽에 따라 정답 핵심은 URL+실제 위치+기법이고 evidence_tex
 | GET /api/health | 서버 생존 확인 |
 | POST /api/analyze | URL 분석·결과 반환 |
 
-요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, content_candidates, content_policy_version, result_json, result_extra_json, warnings입니다. API finding의 technique/selector/location/url/evidence/confidence와 제출용 finding은 구분합니다. Result Builder는 내부 source_text를 제출 evidence_text로 변환하며 화면 설명 evidence를 제출 원문에 섞지 않습니다.
+요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, content_candidates, content_policy_version, result_json, result_extra_json, warnings입니다. API finding의 technique/selector/location/url/evidence/source_text와 제출용 finding은 구분합니다. Result Builder는 내부 source_text를 제출 evidence_text로 변환하며 화면 설명 evidence를 제출 원문에 섞지 않습니다.
 
 응답은 submission_policy_version과 각 finding의 submission_status/submission_reason/submission_categories를 포함합니다. 화면은 위장·은닉 특징, 내용 후보, 선택된 4종 제출 후보와 검토 대상을 구분합니다. result_json은 선택된 후보만 포함하므로 API finding 수와 다를 수 있습니다.
 

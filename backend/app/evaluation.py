@@ -146,7 +146,7 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
     root = Path(__file__).resolve().parents[2]
     sources = ['backend/app/detection.py', 'backend/app/content.py', 'backend/app/location.py',
                'backend/app/comparison.py', 'backend/app/browser.py', 'backend/app/rendered.py', 'backend/app/rendered_snapshot.js',
-               'backend/app/textnorm.py', 'backend/app/policy.py',
+               'backend/app/textnorm.py', 'backend/app/policy.py', 'backend/app/jamo.py',
                'constraints-windows-py314.txt']
     capture = {
         'schema_version': 1, 'purpose': 'feature_detection',
@@ -310,6 +310,7 @@ def evaluate_capture(directory, *, kind='feature'):
         'submission_candidate_count': sum(item['submission_status'] == 'included' for item in submission_assessments),
         'submission_policy_sha256': _hash(Path(__file__).with_name('policy.py').read_bytes()),
         'text_normalization_sha256': _hash(Path(__file__).with_name('textnorm.py').read_bytes()),
+        'jamo_rules_sha256': _hash(Path(__file__).with_name('jamo.py').read_bytes()),
         'content_detector_sha256': _hash(Path(__file__).with_name('content.py').read_bytes()),
         'metrics_purpose': 'content_presence_only' if content_mode else 'four_technique_features_only',
         'unjudged_predictions': 0 if labels.complete else len(unknown),

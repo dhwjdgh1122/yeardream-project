@@ -108,7 +108,7 @@ def export_submission_review(directory, output):
         'export_source_hashes': {
             name: _hash((Path(__file__).parent / name).read_bytes())
             for name in ('review.py', 'evaluation.py', 'detection.py', 'rendered.py', 'location.py', 'result.py',
-                         'content.py', 'textnorm.py', 'policy.py', 'comparison.py')
+                         'content.py', 'textnorm.py', 'policy.py', 'comparison.py', 'jamo.py')
         },
     }
     output.mkdir(parents=True, exist_ok=False)

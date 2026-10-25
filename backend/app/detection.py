@@ -9,9 +9,9 @@ from .result import build_result_json
 from .location import build_selector
 from .limits import Deadline
 from .rendered import rendered_techniques
+from .jamo import JAMO_PATTERN, has_jamo_feature
 
 HOMOGLYPH_PATTERN = re.compile(r'[а-яА-ЯёЁіІјЈѕЅ\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]')
-JAMO_PATTERN = re.compile(r'[\u1100-\u11ff\u3130-\u318f]')
 
 
 def _build_element_selector(element) -> str:
@@ -72,7 +72,7 @@ def _matches_technique(element, technique: str) -> bool:
     if technique == "HOMOGLYPH":
         return bool(HOMOGLYPH_PATTERN.search(text))
     if technique == "JAMO":
-        return bool(JAMO_PATTERN.search(text))
+        return has_jamo_feature(text)
     if technique == "TRANSPARENT":
         styles = _inline_styles(element)
         if styles.get("color") == "transparent" or styles.get("visibility") == "hidden":
@@ -146,7 +146,6 @@ def detect_page(page: Dict[str, object], *, deadline: Deadline | None = None) ->
                     "evidence": f"{explanation} 원문: {text[:500]}",
                     "source_text": ''.join(str(child) for child in element.children
                                            if isinstance(child, NavigableString) and not isinstance(child, Comment)),
-                    "confidence": 0.82 if technique in {"TRANSPARENT", "OFFSCREEN"} else 0.75,
                 }
             )
 

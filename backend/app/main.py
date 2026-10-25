@@ -101,7 +101,7 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
                     location=detected["location"],
                     url=detected["url"],
                     evidence=detected["evidence"],
-                    confidence=float(detected["confidence"]),
+                    source_text=detected['source_text'],
                     submission_status=detected['submission_status'],
                     submission_reason=detected['submission_reason'],
                     submission_categories=detected['submission_categories'],

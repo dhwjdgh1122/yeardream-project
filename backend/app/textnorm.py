@@ -1,5 +1,6 @@
 """Bounded keyword normalization with original character ranges for attribution."""
 import unicodedata
+from .jamo import laughter_spans
 
 CONFUSABLES = str.maketrans('аАеЕоОрРсСхХуУіІјЈѕЅ', 'aAeEoOpPcCxXyYiIjJsS')
 LEADING_TO_FINAL = dict(zip('ᄀᄁᄂᄃᄅᄆᄇᄉᄊᄋᄌᄎᄏᄐᄑᄒ', [1, 2, 4, 7, 8, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27]))
@@ -9,10 +10,18 @@ FINAL_CLUSTERS = {(1, 19): 3, (4, 22): 5, (4, 27): 6, (8, 1): 9, (8, 16): 10,
 
 def normalize_mapped(text, offset=0, deadline=None):
     tokens = []
+    laughter = dict(laughter_spans(text, deadline))
+    laughter_end = 0
     for index, char in enumerate(text):
         if deadline:
             deadline.check()
         if char.isspace() or char in '\u200b\u200c\u200d\ufeff':
+            continue
+        laughter_end = laughter.get(index, laughter_end)
+        if index < laughter_end:
+            # Preserve compatibility laughter as a boundary instead of turning
+            # it into a final consonant on the preceding promotional word.
+            tokens.append((char, offset + index, offset + index + 1))
             continue
         hangul = '\uac00' <= char <= '\ud7a3' or '\u1100' <= char <= '\u11ff' or '\u3130' <= char <= '\u318f'
         normalized = unicodedata.normalize('NFKD' if hangul else 'NFKC', char).translate(CONFUSABLES).casefold()

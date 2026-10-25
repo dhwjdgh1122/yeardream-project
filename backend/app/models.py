@@ -18,7 +18,7 @@ class Finding(BaseModel):
     location: str
     url: str
     evidence: str
-    confidence: float = 0.0
+    source_text: str = ''
     submission_status: Literal['included', 'needs_review'] = 'needs_review'
     submission_reason: str = ''
     submission_categories: List[str] = Field(default_factory=list)
@@ -50,7 +50,7 @@ class AnalysisResponse(BaseModel):
     crawled_pages: List[str]
     findings: List[Finding]
     content_candidates: List[ContentCandidate] = Field(default_factory=list)
-    content_policy_version: str = 'content-rules-v3'
+    content_policy_version: str = 'content-rules-v4'
     submission_policy_version: str = 'feature-content-policy-v1'
     result_json: Dict[str, Any]
     result_extra_json: Dict[str, Any] = Field(default_factory=dict)
