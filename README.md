@@ -95,6 +95,23 @@ API 예시:
 
 content-rules-v1은 같은 텍스트 블록에서 도박/성인물 관련 표현과 가입·이용·시청 유도 표현이 가까이 나타나는지 검사합니다. inline 조각·공백·일부 전각/보이지 않는 문자 형태를 정리하며 예방교육·단속 보도 등 명시적인 정상 문맥은 제외합니다. 후보는 검토 대상이며 법적 위반 확정이나 측정된 confidence가 아닙니다. 사전 밖의 은어·변형, 서로 다른 문단에 분산된 광고, 이미지·동영상·CSS 문맥, 예방 문구를 섞은 광고는 놓칠 수 있습니다. 기존 result.json의 is_violation 임시 기본값은 이번 작업에서 변경하지 않았습니다.
 
+## 내용 후보 정답 검수와 평가
+
+새 capture는 4종 기법용 `labels.json`과 독립된 `content-labels.json`을 생성합니다. 이전 capture에는 다음 명령으로 내용 정답 초안을 추가할 수 있습니다. 기존 정답 파일은 덮어쓰지 않습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -B scripts/validate_site.py init-content-labels .validation/run-001
+.\.venv\Scripts\python.exe -B scripts/validate_site.py evaluate .validation/run-001 --kind content
+```
+
+`content-labels.json`은 `url`, `location`, `category`(GAMBLING/ADULT_CONTENT)를 기준으로 내용 존재 여부를 검수합니다. `location`은 후보를 소유하는 텍스트 블록의 선택자이며 iframe 경로는 ` >>> `로 연결합니다. 같은 블록의 두 범주는 각각 독립된 정답입니다. 후보뿐 아니라 놓친 홍보 블록과 정상 블록도 직접 추가하고 `expected`, `reviewed`, `reason`을 기록합니다. 선택자는 저장된 문서에서 정확히 한 요소를 가리켜야 합니다.
+
+`complete: false`에서는 검수한 항목의 TP/FP/FN/TN만 집계하며 미검수 후보를 오탐으로 간주하지 않습니다. 저장된 모든 문서의 양성 블록·범주를 빠짐없이 검수한 뒤에만 `complete: true`와 판정 기준 `policy`를 기록합니다. 이때만 precision/recall/F1을 계산하며, 양성 정답 목록 밖 후보는 FP입니다. 분모가 0인 지표는 `null`입니다. 수집 제외·실패 범위는 점수에 포함되지 않습니다.
+
+결과는 `content-report.json`에 저장하고 기존 4종 기법 `report.json`과 분리합니다. `metrics_purpose: content_presence_only`, 범주별 집계, 원본·정답·평가 코드 해시, 규칙 버전과 수집 경고를 포함합니다. 검수된 내용 존재와 법적 위반 판단은 별개입니다. 선택적 `violation_verdict`는 기본 `unreviewed`이며, `uncertain`/`violation`/`non_violation`을 기록하려면 해당 내용 항목 검수와 `reviewer`, `verdict_reason`이 필요합니다. 이 기록은 내용 점수나 API·제출 JSON을 변경하지 않습니다.
+
+실제 gen.go.kr 저장본은 본문에 한정해 홍보 글 107·151 각각 TP 1, 예방교육 글 454470에서 두 범주 TN 2를 검수했습니다. 제목 등 미검수 범위가 남아 지표는 모두 `null`입니다. 전체 사이트 정확도나 법적 판정 결과가 아닙니다.
+
 ## 테스트
 
 전체 개발·검증 패키지를 설치합니다. 실제 브라우저 검사는 설치된 Microsoft Edge가 필요합니다.

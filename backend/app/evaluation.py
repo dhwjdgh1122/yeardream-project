@@ -23,6 +23,7 @@ from .content import POLICY_VERSION, detect_content
 
 TECHNIQUES = ('HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN')
 Technique = Literal['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN']
+CATEGORIES = ('GAMBLING', 'ADULT_CONTENT')
 
 
 class Label(BaseModel):
@@ -43,6 +44,29 @@ class Labels(BaseModel):
     policy: str | None = None
     complete: StrictBool = False
     labels: list[Label] = Field(default_factory=list)
+
+
+class ContentLabel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    url: str = Field(min_length=1)
+    location: str = Field(min_length=1)
+    category: Literal['GAMBLING', 'ADULT_CONTENT']
+    expected: StrictBool | None = None
+    reviewed: StrictBool = False
+    reason: str = ''
+    # A content-presence label does not establish a legal violation.
+    violation_verdict: Literal['unreviewed', 'uncertain', 'violation', 'non_violation'] = 'unreviewed'
+    verdict_reason: str = ''
+    reviewer: str = ''
+
+    @property
+    def technique(self):
+        return self.category
+
+
+class ContentLabels(Labels):
+    purpose: Literal['content_detection'] = 'content_detection'
+    labels: list[ContentLabel] = Field(default_factory=list)
 
 
 def _hash(raw):
@@ -130,19 +154,21 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
                     labels=[Label(url=p['url'], location=p['location'], technique=p['technique'])
                             for p in predictions])
     _write(output / 'labels.json', labels.model_dump())
+    content_labels = ContentLabels(capture_sha256=labels.capture_sha256, labels=[
+        ContentLabel(url=p['url'], location=p['location'], category=p['category'])
+        for p in content_candidates
+    ])
+    _write(output / 'content-labels.json', content_labels.model_dump())
     return capture
 
 
-def evaluate_capture(directory):
-    """Replay saved HTML; this function never performs a network request."""
+def _replay_capture(directory):
+    """Verify and replay saved HTML without network access."""
     directory = Path(directory).resolve()
     capture_raw = (directory / 'capture.json').read_bytes()
     capture = json.loads(capture_raw.decode('utf-8'))
     if capture.get('schema_version') != 1 or capture.get('purpose') != 'feature_detection':
         raise ValueError('Unsupported capture schema')
-    labels = Labels.model_validate_json((directory / 'labels.json').read_text(encoding='utf-8'))
-    if labels.capture_sha256 != _hash(capture_raw):
-        raise ValueError('Labels do not belong to this capture')
     documents = {}
     predictions = {}
     content_candidates = []
@@ -166,11 +192,53 @@ def evaluate_capture(directory):
             predictions[_key(finding)] = finding
     if not documents:
         raise ValueError('No successful documents to evaluate')
-    counts = {name: {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0} for name in TECHNIQUES}
+    return capture_raw, capture, documents, predictions, content_candidates
+
+
+def initialize_content_labels(directory):
+    """Create pending content labels, including for older captures; never overwrite reviews."""
+    directory = Path(directory)
+    output = directory / 'content-labels.json'
+    if output.exists():
+        raise ValueError('Content labels already exist; existing reviews are preserved')
+    raw, _, _, _, candidates = _replay_capture(directory)
+    labels = ContentLabels(capture_sha256=_hash(raw), labels=[
+        ContentLabel(url=item['url'], location=item['location'], category=item['category'])
+        for item in candidates
+    ])
+    # Exclusive creation also prevents accidental overwrites by concurrent callers.
+    with output.open('x', encoding='utf-8') as stream:
+        stream.write(json.dumps(labels.model_dump(), ensure_ascii=False, indent=2))
+    return labels.model_dump()
+
+
+def evaluate_capture(directory, *, kind='feature'):
+    """Score one independent label set. Content scores never adjudicate violations."""
+    if kind not in {'feature', 'content'}:
+        raise ValueError('Unknown evaluation kind')
+    directory = Path(directory)
+    capture_raw, capture, documents, predictions, content_candidates = _replay_capture(directory)
+    content_mode = kind == 'content'
+    model = ContentLabels if content_mode else Labels
+    filename = 'content-labels.json' if content_mode else 'labels.json'
+    labels_raw = (directory / filename).read_bytes()
+    labels = model.model_validate_json(labels_raw.decode('utf-8'))
+    if labels.capture_sha256 != _hash(capture_raw):
+        raise ValueError('Labels do not belong to this capture')
+    dimension = 'category' if content_mode else 'technique'
+    names = CATEGORIES if content_mode else TECHNIQUES
+    if content_mode:
+        predictions = {(p['url'], p['location'], p['category']): p for p in content_candidates}
+    counts = {name: {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0} for name in names}
     reviewed_keys = set()
     seen_labels = set()
     details = []
     for label in labels.labels:
+        if content_mode and label.violation_verdict != 'unreviewed':
+            if not label.verdict_reason.strip() or not label.reviewer.strip():
+                raise ValueError('A violation verdict needs a reviewer and verdict reason')
+            if not label.reviewed:
+                raise ValueError('A violation verdict requires a reviewed content label')
         key = (label.url, label.location, label.technique)
         if key in seen_labels:
             raise ValueError('Duplicate label')
@@ -181,7 +249,7 @@ def evaluate_capture(directory):
             raise ValueError('Reviewed labels need an expected Boolean and a reason')
         key = _resolve_label(label, documents)
         if key in reviewed_keys:
-            raise ValueError('Duplicate labels identify the same element and technique')
+            raise ValueError(f'Duplicate labels identify the same element and {dimension}')
         reviewed_keys.add(key)
         predicted = key in predictions
         outcome = ('tp' if predicted else 'fn') if label.expected else ('fp' if predicted else 'tn')
@@ -206,19 +274,21 @@ def evaluate_capture(directory):
         }
 
     return {
-        'purpose': 'feature_detection', 'scope': 'saved_successful_documents_only',
+        'purpose': labels.purpose, 'scope': 'saved_successful_documents_only',
         'capture_sha256': _hash(capture_raw), 'captured_at': capture['captured_at'],
+        'labels_sha256': _hash(labels_raw),
+        'evaluator_sha256': _hash(Path(__file__).read_bytes()),
         'request': capture['request'],
         'policy': labels.policy, 'review_complete': labels.complete,
         'collection_warnings': capture['warnings'], 'document_count': len(documents),
         'prediction_count': len(predictions), 'unreviewed_labels': pending,
         'content_candidate_count': len(content_candidates), 'content_candidates': content_candidates,
         'content_policy_version': POLICY_VERSION,
-        'metrics_purpose': 'four_technique_features_only',
+        'metrics_purpose': 'content_presence_only' if content_mode else 'four_technique_features_only',
         'unjudged_predictions': 0 if labels.complete else len(unknown),
-        'counts': totals, 'by_technique': counts,
+        'counts': totals, f'by_{dimension}': counts,
         'metrics': metrics(totals) if labels.complete else None,
-        'metrics_by_technique': {name: metrics(row) for name, row in counts.items()} if labels.complete else None,
+        f'metrics_by_{dimension}': {name: metrics(row) for name, row in counts.items()} if labels.complete else None,
         'details': details,
-        'detector_sha256': _hash(Path(__file__).with_name('detection.py').read_bytes()),
+        'detector_sha256': _hash(Path(__file__).with_name('content.py' if content_mode else 'detection.py').read_bytes()),
     }

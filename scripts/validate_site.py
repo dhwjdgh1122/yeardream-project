@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from backend.app.evaluation import capture_site, evaluate_capture
+from backend.app.evaluation import capture_site, evaluate_capture, initialize_content_labels
 
 
 def run():
@@ -21,6 +21,9 @@ def run():
     capture.add_argument('--render-wait-ms', type=int, default=500)
     evaluate = commands.add_parser('evaluate', help='Replay saved HTML without network access')
     evaluate.add_argument('directory', type=Path)
+    evaluate.add_argument('--kind', choices=['feature', 'content'], default='feature')
+    initialize = commands.add_parser('init-content-labels', help='Create pending content labels for an older capture')
+    initialize.add_argument('directory', type=Path)
     args = parser.parse_args()
     try:
         if args.command == 'capture':
@@ -30,8 +33,12 @@ def run():
                               'content_candidates': len(data['content_candidates']),
                               'warnings': len(data['warnings']), 'output': str(args.output)}))
             return 0 if any('file' in doc for doc in data['documents']) else 2
-        report = evaluate_capture(args.directory)
-        output = args.directory / 'report.json'
+        if args.command == 'init-content-labels':
+            data = initialize_content_labels(args.directory)
+            print(json.dumps({'pending_labels': len(data['labels']), 'output': str(args.directory / 'content-labels.json')}))
+            return 0
+        report = evaluate_capture(args.directory, kind=args.kind)
+        output = args.directory / ('content-report.json' if args.kind == 'content' else 'report.json')
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps({key: report[key] for key in ('review_complete', 'prediction_count', 'content_candidate_count',
                          'unreviewed_labels', 'unjudged_predictions', 'counts', 'metrics')}))

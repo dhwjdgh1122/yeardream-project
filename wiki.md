@@ -261,3 +261,12 @@ capture/evaluate는 내용 후보·규칙 버전·후보 수도 별도 기록합
 공식 원문·출력 스키마, 판정 기준·정확도 목표, 동적 수집의 실제 사이트 지원 범위, 호스트/iframe 정책, 탐색 한도, 공식 평가 Python 조건·다른 버전의 호환성, 실행 파일·배포 방식은 추가 확인이 필요합니다.
 
 추가 탐지·RAG·LLM·LangChain·LangGraph·DB·이력·고급 UI는 핵심 안정화 이후 검토합니다. 필요성이 확인되지 않은 기술을 먼저 도입하지 않습니다.
+## 내용 후보 평가 도구 추가 (2026-10-25)
+
+`scripts/validate_site.py evaluate RUN --kind content`는 `content-labels.json`을 사용하고 `content-report.json`으로 저장합니다. 기본 evaluate는 기존 4종 기법 평가입니다. 새 capture는 두 정답 초안을 모두 생성하며, 이전 저장본에는 `init-content-labels RUN`으로 내용 정답을 추가합니다. 기존 파일 덮어쓰기는 거부합니다.
+
+내용 검수 단위는 최상위 URL + 프레임을 포함한 텍스트 블록 위치 + GAMBLING/ADULT_CONTENT 범주입니다. 후보만 확인하지 말고 미탐 블록과 정상 사례도 정답에 추가해야 합니다. `complete: false`에서는 검수된 TP/FP/FN/TN만 집계하고 지표는 null입니다. 저장 문서 전체의 양성 정답을 검수하고 기준 policy를 기록했을 때만 complete를 true로 설정합니다. 전체 검수에서는 양성 정답 밖 후보를 FP로 계산합니다.
+
+원본 HTML·capture 해시와 정답 연결, 선택자 유일성, 동등한 선택자의 중복을 검사합니다. 보고서는 정답 및 평가 코드 해시도 기록합니다. 법적 판단 메모는 선택적 violation_verdict/reviewer/verdict_reason으로 보존하며 내용 존재 평가와 분리합니다. 기본은 미판정이고 API나 제출 스키마에 자동 반영하지 않습니다.
+
+실제 저장본 본문 일부 검수: 107 GAMBLING TP 1, 151 ADULT_CONTENT TP 1, 454470 예방교육 본문 두 범주 TN 2. 세 저장본 모두 부분 검수여서 전체 지표는 null입니다. 원본 및 검수 파일은 Git에서 제외된 .validation/에 보관합니다. 사용 예시와 상세 필드는 README의 내용 후보 평가 절을 참고합니다.
