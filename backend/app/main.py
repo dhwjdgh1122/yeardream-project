@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -12,6 +13,7 @@ from .detection import detect_page
 from .result import build_result_json
 from .models import AnalyzeRequest, AnalysisResponse, Finding
 from .limits import AnalysisTimeout, Deadline
+from .browser import BrowserRenderer, BrowserUnavailable
 
 app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
 
@@ -37,7 +39,11 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
     try:
         started_at = datetime.now(timezone.utc).isoformat()
         deadline = Deadline.after(payload.total_timeout_sec)
-        pages = crawl_site(payload.url, max_pages=8, max_depth=payload.max_depth, deadline=deadline)
+        rendering = (BrowserRenderer(deadline, payload.render_wait_ms)
+                     if payload.collection_mode == 'browser' else nullcontext(None))
+        with rendering as renderer:
+            pages = crawl_site(payload.url, max_pages=8, max_depth=payload.max_depth,
+                               deadline=deadline, renderer=renderer)
         crawl_timed_out = any(page.get("crawl_stop_reason") == "total_timeout" for page in pages)
         successful_pages = [page for page in pages if "error" not in page]
         if not successful_pages:
@@ -46,6 +52,7 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             raise HTTPException(status_code=502, detail="분석할 페이지를 수집하지 못했습니다.")
         warnings = []
         for page in pages:
+            warnings.extend(page.get('collection_warnings', []))
             if "error" in page:
                 path = " >>> ".join(page.get("frame_path", []))
                 warnings.append(f"수집 실패: {page['url']} ({path or 'page'})")
@@ -104,14 +111,19 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
         page_title = successful_pages[0].get("title")
         return AnalysisResponse(
             url=payload.url,
+            collection_mode=payload.collection_mode,
             page_title=str(page_title) if page_title else None,
             crawled_pages=list(dict.fromkeys(str(page["url"]) for page in successful_pages)),
             findings=findings,
             result_json=result_json,
-            warnings=warnings,
+            warnings=list(dict.fromkeys(warnings)),
         )
     except HTTPException:
         raise
+    except BrowserUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AnalysisTimeout as exc:
+        raise HTTPException(status_code=504, detail="분석 시간 제한에 도달했습니다.") from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

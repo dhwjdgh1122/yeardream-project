@@ -31,10 +31,39 @@ DOCUMENTS = {
     "nested": '<p id="nested:ad" style="opacity:0">Nested transparent</p>',
     "clean": '<!doctype html><title>Clean</title><p>Normal text</p>',
     "dynamic": '''<!doctype html><title>Dynamic</title><script>
-        const p = document.createElement('p'); p.id = 'dynamic-ad';
-        p.style.opacity = '0'; p.textContent = 'Runtime text';
-        document.addEventListener('DOMContentLoaded', () => document.body.append(p));
+        document.addEventListener('DOMContentLoaded', () => setTimeout(async () => {
+            const p = document.createElement('p'); p.id = 'dynamic-ad';
+            p.style.opacity = '0'; p.textContent = 'Runtime text'; document.body.append(p);
+            const response = await fetch('/fixtures/comment');
+            document.body.insertAdjacentHTML('beforeend', await response.text());
+            const link = document.createElement('a'); link.href='/fixtures/runtime-child';
+            link.textContent = 'Child'; document.body.append(link);
+            for (const number of [1, 2]) {
+                const frame = document.createElement('iframe'); frame.src='/fixtures/runtime-frame';
+                frame.onload = () => {
+                    const ad = frame.contentDocument.createElement('p');
+                    ad.id='parent-ad'; ad.style.opacity='0'; ad.textContent='Insertion ' + number;
+                    frame.contentDocument.body.append(ad);
+                };
+                document.body.append(frame);
+            }
+            const inline = document.createElement('iframe'); inline.id='inline';
+            inline.srcdoc = `<body onload="const p=document.createElement('p');p.id='inline-ad';p.style.opacity='0';p.textContent='Inline runtime';document.body.append(p)">`;
+            document.body.append(inline);
+            const blank = document.createElement('iframe'); blank.id='blank';
+            blank.onload = () => blank.contentDocument.body.innerHTML = '<p id="blank-ad" style="opacity:0">Blank runtime</p>';
+            document.body.append(blank);
+        }, 50));
         </script><body></body>''',
+    "comment": '<p id="comment" style="opacity:0">Fetched comment</p>',
+    "runtime-frame": '''<!doctype html><body><script>
+        const p=document.createElement('p'); p.id='frame-ad'; p.style.opacity='0';
+        p.textContent='Frame runtime'; document.body.append(p);
+        const frame=document.createElement('iframe'); frame.src='/fixtures/runtime-nested'; document.body.append(frame);
+        </script>''',
+    "runtime-nested": '<body onload="document.querySelector(\'p\').style.opacity=\'0\'"><p id="nested-ad">Nested runtime</p>',
+    "runtime-child": '<body onload="document.querySelector(\'p\').style.opacity=\'0\'"><p id="child-ad">Child runtime</p>',
+    "runtime-error": '<body><p style="opacity:0">Surviving result</p><iframe src="/fixtures/missing"></iframe><script>throw new Error("Fixture runtime error")</script>',
 }
 
 
@@ -112,11 +141,64 @@ def run():
                     assert '분석 완료: 0개' in page.locator('#status').inner_text()
                     dynamic = analyze('dynamic')
                     target.goto(base + '/fixtures/dynamic')
-                    assert target.locator('#dynamic-ad').count() == 1
+                    target.wait_for_selector('#dynamic-ad', state='attached')
                     assert dynamic['findings'] == [], 'Static collection contract changed'
+                    page.locator('#collectionMode').select_option('browser')
+                    runtime = analyze('dynamic')
+                    assert runtime['collection_mode'] == 'browser'
+                    assert len(runtime['findings']) == 11, runtime
+                    assert not runtime['warnings'], runtime['warnings']
+                    assert json.loads(main.result_path.read_text(encoding='utf-8')) == runtime['result_json']
+                    assert json.loads(page.locator('#output').inner_text())['collectionMode'] == 'browser'
+                    assert any('Fetched comment' in f['evidence'] for f in runtime['findings'])
+                    assert any('Insertion 1' in f['evidence'] for f in runtime['findings'])
+                    assert any('Insertion 2' in f['evidence'] for f in runtime['findings'])
+                    assert any('Child runtime' in f['evidence'] for f in runtime['findings'])
+                    # Locate each finding from its exported top URL in a fresh browser page.
+                    current_url = None
+                    for finding in runtime['findings']:
+                        if current_url != finding['url']:
+                            target.goto(finding['url'])
+                            target.wait_for_timeout(500)
+                            current_url = finding['url']
+                        context = target.main_frame
+                        segments = finding['location'].split(' >>> ')
+                        for selector in segments[:-1]:
+                            element = context.query_selector(selector)
+                            assert element is not None, finding
+                            context = element.content_frame()
+                            assert context is not None, finding
+                        element = context.locator(segments[-1])
+                        assert element.count() == 1, finding
+                        assert element.text_content().strip() in finding['evidence'], finding
+                    shallow_response = page.request.post(base + '/api/analyze', data={
+                        'url': base + '/fixtures/dynamic', 'collection_mode': 'browser', 'max_depth': 0,
+                    })
+                    assert shallow_response.status == 200, shallow_response.text()
+                    shallow = shallow_response.json()
+                    assert len(shallow['findings']) == 10, shallow
+                    assert any('max_depth=0' in warning for warning in shallow['warnings'])
+                    partial = analyze('runtime-error')
+                    assert len(partial['findings']) == 1
+                    assert any('Fixture runtime error' in warning for warning in partial['warnings'])
+                    assert any('수집 실패' in warning for warning in partial['warnings'])
+                    assert '일부 범위 미분석' in page.locator('#status').inner_text()
+                    previous = main.result_path.read_bytes()
+                    analyze('missing', 502)
+                    assert main.result_path.read_bytes() == previous
+                    clean = analyze('clean')
+                    assert clean['findings'] == [] and clean['collection_mode'] == 'browser'
+                    # Startup and waiting both share the analysis deadline.
+                    previous = main.result_path.read_bytes()
+                    expired = page.request.post(base + '/api/analyze', data={
+                        'url': base + '/fixtures/dynamic', 'collection_mode': 'browser',
+                        'total_timeout_sec': 0.1, 'render_wait_ms': 5000,
+                    })
+                    assert expired.status == 504, expired.text()
+                    assert main.result_path.read_bytes() == previous
                     assert not errors, errors
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
-                    print('Dynamic limitation confirmed: runtime element exists in browser but is absent from static findings')
+                    print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')
         finally:
             server.should_exit = True
             thread.join(timeout=10)

@@ -6,12 +6,13 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../frontend/static/index.html'), 'utf8');
 const elements = {};
-for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze']) {
+for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode']) {
   elements[id] = { value: '', textContent: '', disabled: false, handlers: {},
     addEventListener(event, callback) { this.handlers[event] = callback; } };
 }
 elements.url.value = 'https://example.com';
 elements.techniqueFilter.value = 'ALL';
+elements.collectionMode.value = 'static';
 const response = {
   url: elements.url.value, page_title: 'Fixture', crawled_pages: [elements.url.value],
   findings: [
@@ -26,6 +27,8 @@ const context = vm.createContext({
     assert.equal(url, '/api/analyze');
     assert.equal(options.method, 'POST');
     assert.equal(elements.analyze.disabled, true);
+    assert.equal(elements.collectionMode.disabled, true);
+    assert.equal(JSON.parse(options.body).collection_mode, elements.collectionMode.value);
     if (fail) throw new Error('Fixture failure');
     return { ok: true, json: async () => response };
   },
@@ -45,11 +48,13 @@ async function run() {
     if (count) assert.ok(data.findings[0].evidence);
   }
   response.warnings = ['Some frames could not be analyzed'];
+  elements.collectionMode.value = 'browser';
   await elements.analyze.handlers.click();
   assert.deepEqual(JSON.parse(elements.output.textContent).warnings, response.warnings);
   fail = true;
   await elements.analyze.handlers.click();
   assert.equal(elements.analyze.disabled, false);
+  assert.equal(elements.collectionMode.disabled, false);
   assert.equal(elements.output.textContent, 'Fixture failure');
   elements.techniqueFilter.handlers.change();
   assert.equal(elements.output.textContent, 'Fixture failure');

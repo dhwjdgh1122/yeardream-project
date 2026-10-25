@@ -77,11 +77,12 @@ class _CrawlTask:
     inline_html: str | None = None
     parent_url: str = ""
     depth: int = 0
+    browser_frame: object | None = None
 
 
 def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
                max_depth: int = 2, total_timeout_sec: float = 60.0,
-               *, deadline: Deadline | None = None) -> List[Dict[str, object]]:
+               *, deadline: Deadline | None = None, renderer=None) -> List[Dict[str, object]]:
     """Collect bounded document contexts, retaining each iframe insertion path.
 
     max_pages limits contexts (including failures), not just unique fetches.
@@ -116,7 +117,25 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
             stop_for_timeout()
             return result
         task = queue.popleft()
-        if task.inline_html is not None:
+        if renderer is not None:
+            try:
+                document = (renderer.snapshot(task.browser_frame, task.url)
+                            if task.browser_frame is not None else renderer.fetch(task.url))
+                deadline.check()
+                document['url'] = urldefrag(str(document['url']))[0]
+                if not allowed_url(document['url'], task.url):
+                    raise ValueError('Redirect target is outside the allowed crawl scope')
+            except AnalysisTimeout:
+                stop_for_timeout()
+                return result
+            except Exception as exc:
+                try:
+                    deadline.check()
+                except AnalysisTimeout:
+                    stop_for_timeout()
+                    return result
+                document = {'url': task.url, 'error': str(exc)}
+        elif task.inline_html is not None:
             document = {"html": task.inline_html, "url": task.url}
         else:
             if task.url not in cache:
@@ -193,6 +212,35 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
             if len(frame_path) > max_iframe_depth:
                 frame_omissions.append({"location": " >>> ".join(frame_path), "reason": "max_iframe_depth"})
                 continue
+            if renderer is not None:
+                try:
+                    child = renderer.child_frame(document['browser_frame'], selector)
+                    if child is None:
+                        frame_omissions.append({'location': ' >>> '.join(frame_path), 'reason': 'frame_unavailable'})
+                        continue
+                    child_url = renderer.frame_url(child)
+                    raw_src = str(iframe.get('src', '')).strip()
+                    if child_url == 'about:blank' and (iframe.has_attr('srcdoc') or raw_src not in {'', 'about:blank'}):
+                        frame_omissions.append({'location': ' >>> '.join(frame_path), 'reason': 'frame_not_loaded'})
+                        continue
+                    if child_url in {'about:blank', 'about:srcdoc'}:
+                        # Embedded runtime documents use their parent's URL as the link base.
+                        iframe_url = final_url
+                    else:
+                        iframe_url = allowed_url(child_url, final_url)
+                    if iframe_url is None:
+                        frame_omissions.append({'location': ' >>> '.join(frame_path), 'reason': 'unsupported_or_external_src'})
+                        continue
+                    iframe_sources.append(iframe_url)
+                    queue.appendleft(_CrawlTask(iframe_url, top_url, frame_path,
+                                               parent_url=final_url, depth=task.depth,
+                                               browser_frame=child))
+                except AnalysisTimeout:
+                    stop_for_timeout()
+                    return result
+                except Exception:
+                    frame_omissions.append({'location': ' >>> '.join(frame_path), 'reason': 'frame_unavailable'})
+                continue
             if iframe.has_attr("srcdoc"):
                 queue.appendleft(_CrawlTask(final_url, top_url, frame_path,
                                            task.ancestor_urls, str(iframe["srcdoc"]), final_url,
@@ -221,6 +269,7 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
                 "frame_omissions": frame_omissions,
                 "html": html,
                 "text": " ".join(soup.stripped_strings)[:2500],
+                "collection_warnings": document.get('collection_warnings', []),
             }
         )
 

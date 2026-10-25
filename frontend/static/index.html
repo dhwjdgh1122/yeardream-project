@@ -59,6 +59,10 @@
         <h1>불법광고 탐지 도구</h1>
         <div class="row">
           <input id="url" type="text" value="https://example.com" style="flex: 1;" />
+          <select id="collectionMode" aria-label="분석 방식">
+            <option value="static">기본 분석</option>
+            <option value="browser">동적 페이지 분석</option>
+          </select>
           <select id="techniqueFilter" style="min-width: 180px;">
             <option value="ALL">전체 유형</option>
             <option value="HOMOGLYPH">HOMOGLYPH</option>
@@ -68,6 +72,7 @@
           </select>
           <button id="analyze">탐지 실행</button>
         </div>
+        <p>동적 페이지 분석은 JavaScript로 생성되는 내용을 확인합니다. 스크롤·클릭이 필요한 내용과 늦게 표시되는 내용은 포함되지 않을 수 있습니다.</p>
         <div class="status" id="status">대기 중</div>
         <div class="result" id="output">결과가 여기에 표시됩니다.</div>
       </div>
@@ -79,6 +84,7 @@
       const status = document.getElementById('status');
       const techniqueFilter = document.getElementById('techniqueFilter');
       const analyzeButton = document.getElementById('analyze');
+      const collectionMode = document.getElementById('collectionMode');
       let lastAnalysis = null;
 
       function renderFindings(data) {
@@ -87,6 +93,7 @@
 
         const summary = {
           url: data.url,
+          collectionMode: data.collection_mode || 'static',
           pageTitle: data.page_title || 'N/A',
           totalPages: data.crawled_pages.length,
           totalFindings: findings.length,
@@ -112,6 +119,7 @@
 
         lastAnalysis = null;
         analyzeButton.disabled = true;
+        collectionMode.disabled = true;
         status.textContent = '탐지 중...';
         output.textContent = '요청을 보냈습니다.';
 
@@ -119,7 +127,7 @@
           const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url, collection_mode: collectionMode.value })
           });
 
           const data = await response.json();
@@ -136,6 +144,7 @@
           status.textContent = '오류 발생';
         } finally {
           analyzeButton.disabled = false;
+          collectionMode.disabled = false;
         }
       });
 

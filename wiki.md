@@ -34,7 +34,7 @@ Frontend → FastAPI → Crawler → Detection Engine
                             API → 결과 UI
 ```
 
-현재 기술은 Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·html5lib·HTML/JavaScript입니다. 수집과 탐지는 HTML5 파서로 동일한 DOM을 구성해 암시적 tbody 등 브라우저의 구조 보정을 반영합니다. 검증에는 Playwright와 설치된 Edge를 사용하며 제품의 동적 수집 도구는 미확정입니다. 특정 프레임워크는 팀의 선택이며 공모전 지정 기술이 아닙니다.
+현재 기술은 Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·html5lib·HTML/JavaScript입니다. 수집과 탐지는 HTML5 파서로 동일한 DOM을 구성해 암시적 tbody 등 브라우저의 구조 보정을 반영합니다. 선택적인 동적 수집과 브라우저 검증에는 Playwright와 설치된 Edge를 사용합니다. 특정 프레임워크는 팀의 선택이며 공모전 지정 기술이 아닙니다.
 
 현재 파일 배치는 다음과 같습니다. 파일 존재와 정상 동작은 구분합니다.
 
@@ -43,6 +43,7 @@ backend/app/
   __init__.py
   main.py          # API·저장·화면 연결
   crawler.py       # 정적 HTTP 수집·링크·iframe 탐색
+  browser.py       # 선택적 Edge 렌더링·실제 프레임 DOM 수집
   detection.py     # 탐지 로직
   location.py      # 고유 selector 생성
   limits.py        # 수집·탐지 공유 시간 예산
@@ -76,7 +77,13 @@ URL 검증·정규화 → Queue → 페이지 수집 → DOM 분석 → 하위 �
 - iframe 내부 URL, 상위 문서에서 시작하는 프레임 요소 selector 경로
 - 성공·실패·시간 초과·한도 중단 사유
 
-일반 링크와 프레임 문서를 구분합니다. 현재 top_url·parent_url·frame_path를 보존하며 같은 iframe URL도 삽입 위치마다 별도 컨텍스트로 처리합니다. 성공/실패 응답은 실행 중 URL별 캐시로 재사용합니다. 상대 src와 정적 srcdoc을 처리하고 순환·깊이 초과·외부/미지원 src를 기록합니다. srcdoc의 링크 기준은 부모 문서 URL입니다. HTML base 요소·동적 프레임·about:blank의 런타임 DOM은 미지원입니다.
+일반 링크와 프레임 문서를 구분합니다. 현재 top_url·parent_url·frame_path를 보존하며 같은 iframe URL도 삽입 위치마다 별도 컨텍스트로 처리합니다. 정적 모드는 성공/실패 응답을 실행 중 URL별 캐시로 재사용합니다. 상대 src와 정적 srcdoc을 처리하고 순환·깊이 초과·외부/미지원 src를 기록합니다. srcdoc의 링크 기준은 부모 문서 URL입니다. HTML base 요소는 미지원입니다.
+
+동적 모드는 요청마다 새 Edge 컨텍스트를 열고 일반 페이지를 DOMContentLoaded까지 이동한 뒤 기본 500ms를 추가 대기합니다. 기존 개인 프로필은 사용하지 않으며 팝업은 닫고 Service Worker는 차단합니다. JS가 만든 본문·fetch 댓글·링크·iframe과 실행된 srcdoc/about:blank의 DOM을 읽습니다. iframe은 URL로 다시 열지 않고 원래 부모 안의 실제 Frame을 읽으므로 동일 src라도 부모가 수정한 삽입별 상태를 유지합니다. 프레임을 모두 처리한 뒤 다음 일반 페이지로 이동합니다. 스냅샷은 문서별 순차 수집이며 전체 프레임 트리의 원자적 고정본이 아닙니다.
+
+동적 iframe의 현재 URL이 범위 밖이면 제외하며 src가 있으나 아직 about:blank인 프레임은 frame_not_loaded, 분리·접근 실패는 frame_unavailable로 알립니다. HTTP 400 이상 문서는 실패로 처리하고 페이지 JavaScript 예외는 warnings로 반환합니다. 프레임 깊이와 문서 수는 읽는 DOM 컨텍스트를 제한하며 브라우저가 이미 로딩하는 리소스·외부 요청의 차단 또는 총 요청 수 제한을 뜻하지 않습니다. 종료·오류 시 브라우저와 드라이버를 정리합니다.
+
+사용 API의 기준은 Playwright 공식 문서의 [Page.goto](https://playwright.dev/python/docs/api/class-page#page-goto), [Frame.content](https://playwright.dev/python/docs/api/class-frame#frame-content), [BrowserType.launch](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch)를 참조합니다.
 
 일반 링크는 동일 호스트 범위를 기본으로 합니다. scheme·port·서브도메인·리디렉션·외부 iframe의 세부 허용 정책은 미확정입니다. 현재 구현은 netloc가 같은 링크와 iframe src만 허용하며 외부 iframe 지원 완료를 뜻하지 않습니다.
 
@@ -94,7 +101,7 @@ URL 검증·정규화 → Queue → 페이지 수집 → DOM 분석 → 하위 �
 
 공유 시간은 monotonic clock으로 측정하고 요청 시작·응답 스트림 청크·수집 반복·탐지 요소 처리 사이에서 확인합니다. 이미 진행 중인 I/O·파싱·selector 탐색을 즉시 중단하는 강제 종료가 아니므로 제한을 일부 초과할 수 있습니다. 최종 결과 변환·직렬화·파일 저장은 중단 결과를 돌려주기 위한 마무리이며 이 예산으로 강제 종료하지 않습니다. 공식 30분 조건의 엄격한 준수를 검증한 기능으로 취급하지 않습니다.
 
-HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 콘텐츠를 구분해 검증합니다. 정적 HTTP 수집만으로 동적 콘텐츠 지원을 보장하지 않습니다. 개별 프레임 실패가 전체 탐색을 중단시키지 않게 하되 전체 수집 실패는 정상 0건과 구분합니다.
+HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 콘텐츠를 구분해 검증합니다. 동적 모드는 제한된 관찰 시점까지 생성된 내용만 지원합니다. 자동 스크롤·클릭·로그인·Shadow DOM·computed style 판정은 미지원입니다. DOM 수집 후 변동이 있으면 selector 재식별이 실패할 수 있으며 실제 사이트 정확도는 별도 검증합니다. 개별 프레임 실패가 전체 탐색을 중단시키지 않게 하되 전체 수집 실패는 정상 0건과 구분합니다.
 
 ## 5. 탐지 기준
 
@@ -197,7 +204,9 @@ is_violation=false 포함 여부와 의심 사례 표현은 공식 규격·분�
 | GET /api/health | 서버 생존 확인 |
 | POST /api/analyze | URL 분석·결과 반환 |
 
-요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60)입니다. 이 상한은 API의 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 한도 입력은 HTTP 422로 거부합니다. 현재 응답 모델은 url, page_title, crawled_pages, findings, result_json, warnings이며 API finding은 technique, selector, location, url, evidence, confidence를 갖습니다. 제출용 finding과는 다릅니다. evidence → evidence_text 등의 변환은 Result Builder가 맡으며 변경 시 모델·UI를 함께 수정합니다.
+요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API의 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 현재 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, result_json, warnings이며 API finding은 technique, selector, location, url, evidence, confidence를 갖습니다. 제출용 finding과는 다릅니다. evidence → evidence_text 등의 변환은 Result Builder가 맡으며 변경 시 모델·UI를 함께 수정합니다.
+
+browser 모드는 Playwright·Edge가 필요하며 시작 실패는 HTTP 503입니다. 정적으로 자동 전환하지 않습니다. 브라우저 시작·이동·추가 대기·수집·탐지는 동일 Deadline을 사용합니다. 이동 timeout은 남은 시간과 10초 중 작은 값이며 대기도 남은 시간으로 제한합니다. 드라이버 시작·DOM 직렬화·종료 등 모든 작업을 즉시 강제 종료하는 기능은 아닙니다. 오류 응답은 기존 결과 파일을 보존합니다. collection_mode는 API·UI 안내이며 제출 JSON에는 추가하지 않습니다.
 
 crawled_pages는 수집 성공한 문서 URL의 중복 없는 목록입니다. srcdoc과 동일 URL의 여러 프레임은 위치별 finding으로 구분됩니다. 전체 수집 실패는 HTTP 502로 반환하고 기존 결과 파일을 덮어쓰지 않습니다. 일부 실패·프레임 제외·컨텍스트 한도 도달은 warnings로 반환하며 UI에도 표시합니다. warnings는 API 안내 필드이고 제출 JSON에 추가하지 않습니다. 따라서 파일만으로 분석 범위 완전성을 확인하는 정책은 추후 검토합니다.
 
@@ -224,6 +233,6 @@ Job 기반 `/api/detection`, `/api/detection/{id}`, `/api/detection/{id}/status`
 
 ## 10. 미확정 사항·선택 기능
 
-공식 원문·출력 스키마, 판정 기준·정확도 목표, 동적 렌더링 도구, 호스트/iframe 정책, 탐색 한도, Python 버전, 실행 파일·배포 방식은 추가 확인이 필요합니다.
+공식 원문·출력 스키마, 판정 기준·정확도 목표, 동적 수집의 실제 사이트 지원 범위, 호스트/iframe 정책, 탐색 한도, Python 버전, 실행 파일·배포 방식은 추가 확인이 필요합니다.
 
 추가 탐지·RAG·LLM·LangChain·LangGraph·DB·이력·고급 UI는 핵심 안정화 이후 검토합니다. 필요성이 확인되지 않은 기술을 먼저 도입하지 않습니다.
