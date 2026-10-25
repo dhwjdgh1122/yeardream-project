@@ -18,6 +18,7 @@ from .content import POLICY_VERSION, detect_content
 from .policy import POLICY_VERSION as SUBMISSION_POLICY_VERSION, assess_findings
 from .paths import output_root, resource_root, history_database_path
 from .history import HistoryStore
+from .coverage import build_coverage
 
 app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
 
@@ -123,6 +124,8 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
 
         page_title = successful_pages[0].get("title")
         response = AnalysisResponse(
+            coverage=build_coverage(pages, successful_pages[:analyzed_pages], max_pages=8,
+                                    max_depth=payload.max_depth, timeout_sec=payload.total_timeout_sec),
             url=payload.url,
             collection_mode=payload.collection_mode,
             page_title=str(page_title) if page_title else None,

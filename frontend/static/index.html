@@ -64,7 +64,7 @@
         padding: 12px; background: #f3f4f6; border-radius: 6px; font-family: inherit; }
       .included { border-left: 5px solid #2563eb; }
       .review { border-left: 5px solid #d97706; }
-      .location { font-family: monospace; font-size: 13px; }
+      .location { font-family: monospace; font-size: 13px; overflow-wrap: anywhere; }
       .muted { color: #4b5563; }
       #warnings { color: #92400e; }
       details { margin-top: 20px; }
@@ -115,6 +115,15 @@
         </details>
         <div class="summary" id="summary">분석 후 발견 문구와 검토 이유가 표시됩니다.</div>
         <ul id="warnings" aria-label="분석 경고"></ul>
+        <section aria-label="실제 탐색·분석 범위">
+          <h2>실제 탐색·분석 범위</h2>
+          <p>사이트 전체 검사 결과가 아닙니다. 전체 유형은 결과의 유형 필터입니다. 같은 호스트의 HTTP(S) 링크를 탐색하며, 자동 클릭·스크롤은 하지 않습니다. 발견하지 못한 링크·게시글·댓글은 아래 목록에도 없을 수 있습니다.</p>
+          <p id="coverageSummary">기본 한도: 문서 8개(실패·iframe 포함), 링크 깊이 2, 공유 시간 예산 60초. 이는 공모전 지정 한도가 아닌 현재 구현 설정입니다.</p>
+          <details id="coverageDetails">
+            <summary>수집·분석 문서와 미방문·제외 범위 보기</summary>
+            <div id="coverageDocuments"></div>
+          </details>
+        </section>
         <h2 id="findingHeading">위장·은닉 특징</h2>
         <div id="findingCards"></div>
         <h2 id="contentHeading">홍보 내용 후보</h2>
@@ -158,6 +167,48 @@
         document.getElementById('findingHeading').textContent = '위장·은닉 특징';
         document.getElementById('contentHeading').textContent = '홍보 내용 후보';
         document.getElementById('rawDetails').open = false;
+        document.getElementById('coverageDocuments').replaceChildren();
+        document.getElementById('coverageDetails').open = false;
+        document.getElementById('coverageSummary').textContent = '기본 한도: 문서 8개(실패·iframe 포함), 링크 깊이 2, 공유 시간 예산 60초. 이는 공모전 지정 한도가 아닌 현재 구현 설정입니다.';
+      }
+
+      function renderCoverage(data) {
+        const container = document.getElementById('coverageDocuments');
+        container.replaceChildren();
+        const coverage = data.coverage;
+        if (!coverage?.documents) {
+          document.getElementById('coverageSummary').textContent = '이 결과에는 상세 범위 기록이 없습니다. 사이트 전체 검사 여부를 확인할 수 없습니다.';
+          return;
+        }
+        const reasons = { max_pages: '문서 수 한도', max_depth: '링크 깊이 한도',
+          total_timeout: '공유 시간 예산', not_collected: '수집하지 못함',
+          max_iframe_depth: 'iframe 깊이 한도', frame_unavailable: 'iframe 접근 불가',
+          frame_not_loaded: 'iframe 로드 미완료', unsupported_or_external_src: '외부 범위 또는 미지원 iframe',
+          frame_cycle: 'iframe 순환' };
+        const labels = { analyzed: '수집 성공 · 탐지 완료', collection_failed: '수집 실패',
+          not_analyzed: '수집 성공 · 탐지 미완료(시간 예산)' };
+        document.getElementById('coverageSummary').textContent =
+          `문서 수집 시도 ${coverage.attempted_documents}개 · 수집 성공 ${coverage.collected_documents}개 · 탐지 완료 ${coverage.analyzed_documents}개 · 수집 실패 ${coverage.failed_documents}개 · 발견했지만 미방문한 URL ${coverage.unvisited_known_urls}개. 한도: 문서 ${coverage.limits.max_documents}개, 깊이 ${coverage.limits.max_depth}, ${coverage.limits.total_timeout_sec}초. 사이트 전체 대비 검사율은 알 수 없습니다.`;
+        addText(container, 'h3', '수집·분석 문서 (iframe은 위치별 집계)');
+        for (const item of coverage.documents) {
+          const card = addText(container, 'article', '', 'finding-card');
+          addText(card, 'p', `${labels[item.status] || item.status} · 깊이 ${item.depth}`);
+          addText(card, 'p', item.url, 'location');
+          if (item.requested_url !== item.url) addText(card, 'p', `요청 URL: ${item.requested_url}`, 'location');
+          if (item.frame_path.length) addText(card, 'p', `iframe 위치: ${item.frame_path.join(' >>> ')}`, 'location');
+          if (item.reason) addText(card, 'p', item.reason);
+        }
+        addText(container, 'h3', '발견했지만 방문하지 않은 URL');
+        addText(container, 'p', '수집한 문서에서 발견한 링크만 표시합니다. 이 목록의 개수가 사이트 전체 미분석 페이지 수는 아닙니다.');
+        for (const item of coverage.unvisited_links) {
+          addText(container, 'p', `${reasons[item.reason] || item.reason}: ${item.url} (발견 문서: ${item.source_url})`, 'location');
+        }
+        if (!coverage.unvisited_links.length) addText(container, 'p', '알려진 미방문 링크 없음. 미발견 페이지의 부재를 뜻하지 않습니다.');
+        addText(container, 'h3', '제외된 iframe');
+        for (const item of coverage.excluded_frames) {
+          addText(container, 'p', `${reasons[item.reason] || item.reason}: ${item.source_url} / ${item.location}`, 'location');
+        }
+        if (!coverage.excluded_frames.length) addText(container, 'p', '기록된 iframe 제외 없음.');
       }
 
       function renderCards(findings, candidates) {
@@ -197,6 +248,7 @@
           filter === 'ALL' || item.category === filter || item.techniques.includes(filter));
 
         const summary = {
+          coverage: data.coverage || null,
           url: data.url,
           collectionMode: data.collection_mode || 'static',
           pageTitle: data.page_title || 'N/A',
@@ -222,11 +274,12 @@
 
         output.textContent = JSON.stringify(summary, null, 2);
         document.getElementById('summary').textContent =
-          `수집 문서 ${data.crawled_pages.length}개 · 전체 특징 ${data.findings.length}개 · 4종 제출 후보 ${(data.result_json?.findings || []).length}개 · 현재 표시 특징 ${findings.length}개 / 홍보 후보 ${contentCandidates.length}개. 0건은 광고 부재를 뜻하지 않습니다.`;
+          `분석된 범위에서 전체 특징 ${data.findings.length}개 · 4종 제출 후보 ${(data.result_json?.findings || []).length}개 · 현재 표시 특징 ${findings.length}개 / 홍보 후보 ${contentCandidates.length}개. 0건은 광고 부재를 뜻하지 않습니다.`;
         const warningList = document.getElementById('warnings');
         warningList.replaceChildren();
         for (const warning of data.warnings || []) addText(warningList, 'li', warning);
         renderCards(findings, contentCandidates);
+        renderCoverage(data);
       }
 
       analyzeButton.addEventListener('click', async () => {
@@ -266,7 +319,7 @@
           downloadContentButton.disabled = false;
           downloadExtraButton.disabled = !data.result_extra_json;
           const partial = (data.warnings || []).some(warning => !warning.startsWith('분석 이력을 저장하지 못했습니다.'));
-          const completion = partial ? '분석 완료(일부 범위 미분석)' : '분석 완료';
+          const completion = partial ? '수집 범위 분석 종료(일부 범위 미분석)' : '수집 범위 분석 종료';
           status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개, 4종 제출 후보 ${(data.result_json?.findings || []).length}개`;
         } catch (error) {
           clearResults(`분석 실패: ${error.message}`);
@@ -304,6 +357,7 @@
         if (downloadContentButton.disabled || !lastAnalysis) return;
         downloadJson({
           purpose: 'content_candidate_review',
+          coverage: lastAnalysis.coverage || null,
           policy_version: lastAnalysis.content_policy_version || null,
           submission_policy_version: lastAnalysis.submission_policy_version || null,
           meta: lastAnalysis.result_json.meta,

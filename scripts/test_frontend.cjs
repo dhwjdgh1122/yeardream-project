@@ -7,7 +7,8 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../frontend/static/index.html'), 'utf8');
 const elements = {};
 for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode', 'download', 'downloadContent', 'downloadExtra',
-  'summary', 'warnings', 'findingCards', 'contentCards', 'findingHeading', 'contentHeading', 'rawDetails']) {
+  'summary', 'warnings', 'findingCards', 'contentCards', 'findingHeading', 'contentHeading', 'rawDetails',
+  'coverageSummary', 'coverageDetails', 'coverageDocuments']) {
   elements[id] = { value: '', textContent: '', disabled: false, handlers: {},
     children: [], appendChild(node) { this.children.push(node); }, replaceChildren() { this.children = []; },
     addEventListener(event, callback) { this.handlers[event] = callback; } };
@@ -36,6 +37,14 @@ response.result_json = { meta: { entry_url: response.url }, findings: [
 response.result_extra_json = { meta: { topic: 'TOPIC', entry_url: response.url }, findings: [
   { id: 'extra-1', technique: 'ETC', extra_finding: 'GAMBLING_PROMOTION_CANDIDATE', evidence_text: '가입 원문' },
 ] };
+response.coverage = {
+  attempted_documents: 2, collected_documents: 2, analyzed_documents: 1, failed_documents: 0,
+  unvisited_known_urls: 1, limits: { max_documents: 8, max_depth: 2, total_timeout_sec: 60 },
+  documents: [{ url: response.url, requested_url: response.url, depth: 0, frame_path: [], status: 'analyzed', reason: '' },
+    { url: response.url + '/next', requested_url: response.url + '/next', depth: 1, frame_path: [], status: 'not_analyzed', reason: '' }],
+  unvisited_links: [{ url: '<img src=x onerror=alert(1)>', source_url: response.url, reason: 'max_pages' }],
+  excluded_frames: [{ source_url: response.url, location: 'iframe#external', reason: 'unsupported_or_external_src' }]
+};
 let fail = false;
 const downloads = [];
 const objectUrls = new Map();
@@ -88,6 +97,9 @@ async function run() {
   assert.ok(elements.findingCards.children[0].children[0].textContent.includes('제출 후보'));
   assert.ok(elements.findingCards.children[1].children[0].textContent.includes('검토 필요'));
   assert.equal(elements.rawDetails.open, false);
+  assert.ok(elements.coverageSummary.textContent.includes('탐지 완료 1개'));
+  assert.ok(elements.coverageSummary.textContent.includes('미방문한 URL 1개'));
+  assert.ok(elements.coverageDocuments.children.some(node => node.textContent.includes('<img src=x onerror=alert(1)>')));
   assert.ok(!elements.output.textContent.includes('confidence'));
   assert.ok(elements.summary.textContent.includes('0건은 광고 부재를 뜻하지 않습니다'));
   for (const [filter, count] of [['JAMO', 1], ['OFFSCREEN', 0], ['TRANSPARENT', 1], ['ALL', 2]]) {
@@ -143,6 +155,7 @@ async function run() {
   assert.equal(elements.findingCards.children.length, 0);
   assert.equal(elements.contentCards.children.length, 0);
   assert.equal(elements.warnings.children.length, 0);
+  assert.equal(elements.coverageDocuments.children.length, 0);
   assert.equal(elements.download.disabled, true);
   assert.equal(elements.downloadContent.disabled, true);
   assert.equal(elements.downloadExtra.disabled, true);

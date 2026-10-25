@@ -146,10 +146,16 @@ def run():
                                 page.locator('#analyze').click()
                             assert response.value.status == 200, response.value.text()
                             dynamic = response.value.json()
+                            assert dynamic['coverage']['analyzed_documents'] == 1
+                            assert dynamic['coverage']['website_complete'] is False
+                            assert dynamic['coverage']['limits']['max_documents'] == 8
                             assert {f['technique'] for f in dynamic['result_json']['findings']} == {'TRANSPARENT'}
                             assert dynamic['result_json']['findings'][0]['evidence_text'] == '성인영상 무료시청'
                             assert page.locator('#findingCards article').count() == 1
                             assert page.locator('#rawDetails').get_attribute('open') is None
+                            assert '탐지 완료 1개' in page.locator('#coverageSummary').inner_text()
+                            page.locator('#coverageDetails summary').click()
+                            page.get_by_text('알려진 미방문 링크 없음. 미발견 페이지의 부재를 뜻하지 않습니다.', exact=True).wait_for()
                             check_files(bundle, dynamic)
                             for button, key in [('#download', 'result_json'), ('#downloadExtra', 'result_extra_json')]:
                                 with page.expect_download() as download:

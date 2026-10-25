@@ -25,7 +25,8 @@ def run():
     with tempfile.TemporaryDirectory(prefix='yeardream-history-') as temporary:
         main.result_path = Path(temporary) / 'result.json'
         main.history_path = Path(temporary) / 'history.sqlite3'
-        main.crawl_site = lambda url, **kw: [{'url': url, 'html': '''
+        main.crawl_site = lambda url, **kw: [{'url': url, 'links': [url + '/board?query=' + 'x' * 240],
+            'crawl_truncated': True, 'crawl_stop_reason': 'max_pages', 'html': '''
             <p style="opacity:0">카지노 가입 보너스 &lt;img src=x onerror=alert(1)&gt;</p>'''}]
         try:
             thread.start()
@@ -41,11 +42,20 @@ def run():
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(base + '/history')
                     page.wait_for_function("document.querySelector('#message').textContent.includes('저장된 분석이 없습니다')")
-                    response = page.request.post(base + '/api/analyze', data={'url': 'https://example.com'})
+                    page.goto(base)
+                    page.locator('#url').fill('https://example.com')
+                    with page.expect_response('**/api/analyze') as result:
+                        page.locator('#analyze').click()
+                    response = result.value
                     assert response.status == 200
                     analysis = response.json()
+                    page.wait_for_function("document.querySelector('#coverageSummary').textContent.includes('미방문한 URL 1개')")
+                    page.locator('#coverageDetails summary').click()
+                    page.get_by_text('문서 수 한도: https://example.com/board?query=' + 'x' * 240 + ' (발견 문서: https://example.com)', exact=True).wait_for()
+                    assert page.locator('#coverageDocuments img').count() == 0
+                    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                     official = main.result_path.read_bytes()
-                    page.get_by_role('button', name='이력 새로고침').click()
+                    page.goto(base + '/history')
                     page.get_by_role('button', name='https://example.com', exact=True).click()
                     page.locator('#detail form').first.wait_for()
                     assert page.locator('#detail img').count() == 0
@@ -69,7 +79,8 @@ def run():
                     print(json.dumps({'status': 'passed', 'edge': browser.version,
                                       'checks': ['empty history', 'saved analysis', 'review persistence',
                                                  'literal HTML safety', '390px layout',
-                                                 'official JSON preserved', 'database failure']}))
+                                                 'official JSON preserved', 'database failure',
+                                                 'coverage counts and known unvisited URL at 390px']}))
         finally:
             server.should_exit = True
             thread.join(timeout=10)

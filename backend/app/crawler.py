@@ -97,12 +97,24 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
     visited_pages = set()
     cache = {}
     result: List[Dict[str, object]] = []
+    active_task = None
+
+    def pending_contexts():
+        return [dict(url=item.url, parent_url=item.parent_url or None,
+                     frame_path=list(item.frame_path), depth=item.depth) for item in queue]
 
     def stop_for_timeout():
+        if result and active_task is not None:
+            result[-1]['interrupted_context'] = dict(
+                url=active_task.url, requested_url=active_task.url,
+                parent_url=active_task.parent_url or None, depth=active_task.depth,
+                frame_path=list(active_task.frame_path),
+                error='수집 또는 전처리 중 시간 예산에 도달했습니다.')
         if not result:
             result.append({"url": base_url, "error": "분석 시간 제한에 도달했습니다."})
         result[-1]["crawl_truncated"] = True
         result[-1]["crawl_stop_reason"] = "total_timeout"
+        result[-1]['pending_contexts'] = pending_contexts()
 
     def allowed_url(raw, parent):
         absolute = urldefrag(urljoin(parent, raw))[0]
@@ -117,6 +129,7 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
             stop_for_timeout()
             return result
         task = queue.popleft()
+        active_task = task
         if renderer is not None:
             try:
                 document = (renderer.snapshot(task.browser_frame, task.url)
@@ -164,6 +177,7 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
         top_url = task.top_url or final_url
         context = {
             "url": final_url,
+            "requested_url": task.url,
             "top_url": top_url,
             "frame_path": list(task.frame_path),
             "page_type": "iframe" if task.frame_path else "page",
@@ -172,9 +186,11 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
         }
         if "error" in document:
             result.append({**context, "error": document["error"]})
+            active_task = None
             continue
         if not task.frame_path:
             if final_url in visited_pages:
+                active_task = None
                 continue
             visited_pages.add(final_url)
         html = document["html"]
@@ -273,10 +289,12 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
                 **({'rendered_style': document['rendered_style']} if 'rendered_style' in document else {}),
             }
         )
+        active_task = None
 
     if queue and result:
         result[-1]["crawl_truncated"] = True
         result[-1]["crawl_stop_reason"] = "max_pages"
+        result[-1]['pending_contexts'] = pending_contexts()
     try:
         deadline.check()
     except AnalysisTimeout:
