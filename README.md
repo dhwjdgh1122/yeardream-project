@@ -93,9 +93,16 @@ API 예시:
 
 내용 후보는 API의 `content_candidates`에 GAMBLING/ADULT_CONTENT로 반환합니다. 위치·문맥·일치 표현·연결된 4종 기법·규칙 버전과 `review_status: needs_review`를 포함합니다. 후보 파일에는 수집 방식·분석 메타데이터·경고·규칙 버전도 저장합니다. 일반 표시 광고는 임의의 technique을 붙여 기존 제출 JSON에 넣지 않습니다.
 
-content-rules-v1은 같은 텍스트 블록에서 도박/성인물 관련 표현과 가입·이용·시청 유도 표현이 가까이 나타나는지 검사합니다. inline 조각·공백·일부 전각/보이지 않는 문자 형태를 정리하며 예방교육·단속 보도 등 명시적인 정상 문맥은 제외합니다. 후보는 검토 대상이며 법적 위반 확정이나 측정된 confidence가 아닙니다. 사전 밖의 은어·변형, 서로 다른 문단에 분산된 광고, 이미지·동영상·CSS 문맥, 예방 문구를 섞은 광고는 놓칠 수 있습니다. 기존 result.json의 is_violation 임시 기본값은 이번 작업에서 변경하지 않았습니다.
+현재 content-rules-v2는 같은 텍스트 블록 안에서도 문장을 구분하고, 같은 문장 내 도박/성인물 표현과 가까운 가입·이용·시청 유도 표현을 검사합니다. inline 조각·공백·일부 전각/보이지 않는 문자 형태를 정리하며 예방교육·단속 보도·광고 신고/삭제 요청 등 명시적인 정상 문맥은 제외합니다. 별도 문장의 예방 안내는 홍보 후보를 지우지 않으며, 도메인 내부 마침표는 문장 구분자로 취급하지 않습니다. 후보는 검토 대상이며 법적 위반 확정이나 측정된 confidence가 아닙니다. 여러 문장에 걸친 홍보·인용 보도, 구두점 없는 문장, 사전 밖 은어·변형, 이미지·동영상·CSS 문맥에는 미탐·오탐이 남습니다. 기존 result.json의 is_violation 임시 기본값은 변경하지 않았습니다.
 
 ## 내용 후보 정답 검수와 평가
+
+합성 문장 문맥 사례 22개를 다음 명령으로 비교할 수 있습니다. 출력은 합성 회귀 데이터의 점수이며 실제 사이트 정확도가 아닙니다. 사례와 선정 기준은 `tests/fixtures/content/`에 있습니다. `--output`으로 지정한 파일이 이미 있으면 보존을 위해 오류로 종료합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -B scripts/benchmark_content.py
+.\.venv\Scripts\python.exe -B scripts/benchmark_content.py --output .validation/content-benchmark-new.json
+```
 
 새 capture는 4종 기법용 `labels.json`과 독립된 `content-labels.json`을 생성합니다. 이전 capture에는 다음 명령으로 내용 정답 초안을 추가할 수 있습니다. 기존 정답 파일은 덮어쓰지 않습니다.
 

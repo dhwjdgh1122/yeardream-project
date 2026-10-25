@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic_sentence_context_regression",
+  "cases": [
+    {"id":"gambling-basic","text":"카지노 신규가입 보너스 지급","expected":["GAMBLING"],"reason":"가입 혜택으로 참여를 유도"},
+    {"id":"adult-basic","text":"성인영상 무료시청 바로가기","expected":["ADULT_CONTENT"],"reason":"성인물 시청 유도"},
+    {"id":"gambling-inline","text":"토 토 사 이 트 신규 가입 보너스","expected":["GAMBLING"],"reason":"공백 변형된 참여 유도"},
+    {"id":"mixed-categories","text":"카지노 신규가입 보너스. 성인영상 무료시청 바로가기.","expected":["GAMBLING","ADULT_CONTENT"],"reason":"각 문장에 독립적인 홍보"},
+    {"id":"education-before-ad","text":"도박 예방교육 안내. 카지노 신규가입 보너스 지급.","expected":["GAMBLING"],"reason":"예방 안내 다음 문장의 독립적 참여 유도"},
+    {"id":"education-after-ad","text":"카지노 신규가입 보너스 지급. 도박 예방교육 안내.","expected":["GAMBLING"],"reason":"다음 문장 안내로 홍보를 지우면 안 됨"},
+    {"id":"adult-education-before-ad","text":"성교육 안내입니다. 성인영상 무료시청 바로가기.","expected":["ADULT_CONTENT"],"reason":"별도 문장에 있는 시청 유도"},
+    {"id":"adult-education-after-ad","text":"성인영상 무료시청 바로가기! 성교육 자료 안내.","expected":["ADULT_CONTENT"],"reason":"느낌표로 구분된 독립 홍보"},
+    {"id":"report-gambling","text":"카지노 가입 보너스 광고를 신고해주세요.","expected":[],"reason":"참여가 아니라 광고 신고 요청"},
+    {"id":"report-adult","text":"성인영상 무료시청 홍보 게시물을 신고하세요.","expected":[],"reason":"홍보 게시물 신고 요청"},
+    {"id":"remove-gambling","text":"카지노 신규가입 광고 삭제 요청입니다.","expected":[],"reason":"광고 삭제 요청"},
+    {"id":"report-guide","text":"불법광고 신고 안내: 카지노 신규가입 보너스 사례","expected":[],"reason":"신고 안내에 제시한 광고 사례"},
+    {"id":"unrelated-signup","text":"카지노에 관한 안내입니다. 학교 홈페이지 신규가입 안내.","expected":[],"reason":"다른 문장의 일반 회원가입을 도박에 연결하지 않음"},
+    {"id":"unrelated-free","text":"성인영상의 문제를 토론합니다. 급식 자료 무료 다운로드.","expected":[],"reason":"다른 문장의 무료 자료를 성인물에 연결하지 않음"},
+    {"id":"prevent-gambling","text":"도박 예방교육: 카지노 가입 보너스 광고에 주의하세요.","expected":[],"reason":"동일 문장의 예방교육"},
+    {"id":"prevent-adult","text":"성인영상 무료시청 사이트 차단 방법 안내","expected":[],"reason":"차단 방법 안내"},
+    {"id":"police-news","text":"보도자료: 카지노 신규가입 홍보 운영자를 검거했습니다.","expected":[],"reason":"동일 문장의 경찰 단속 보도"},
+    {"id":"ordinary-education","text":"성인 대상 무료 교육 신청 안내","expected":[],"reason":"성인 교육은 성인물 홍보가 아님"},
+    {"id":"ordinary-character","text":"동화 토토의 모험 무료시청 안내","expected":[],"reason":"등장인물 이름"},
+    {"id":"domain-in-ad","text":"카지노 신규가입 bonus.example.test 안내","expected":["GAMBLING"],"reason":"도메인 마침표가 문장 경계를 만들면 안 됨"},
+    {"id":"news-same-sentence-quote","text":"보도자료: '카지노 신규가입 보너스'라는 홍보를 적발했습니다.","expected":[],"reason":"같은 문장 내 인용 보도"},
+    {"id":"isolated-topic","text":"카지노와 성인영상에 관한 토론","expected":[],"reason":"유도 단서 없음"}
+  ]
+}

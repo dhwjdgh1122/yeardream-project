@@ -40,6 +40,6 @@ class AnalysisResponse(BaseModel):
     crawled_pages: List[str]
     findings: List[Finding]
     content_candidates: List[ContentCandidate] = Field(default_factory=list)
-    content_policy_version: str = 'content-rules-v1'
+    content_policy_version: str = 'content-rules-v2'
     result_json: Dict[str, Any]
     warnings: List[str] = Field(default_factory=list)

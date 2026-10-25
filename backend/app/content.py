@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup, Comment, NavigableString
 
 from .location import build_selector
 
-POLICY_VERSION = 'content-rules-v1'
+POLICY_VERSION = 'content-rules-v2'
 BLOCKS = {'body', 'main', 'article', 'section', 'aside', 'nav', 'header', 'footer',
           'div', 'p', 'li', 'td', 'th', 'blockquote', 'figcaption', 'pre',
           'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
@@ -25,8 +25,28 @@ RULES = {
 PROTECTIVE = re.compile(
     r'예방교육|예방캠페인|피해예방|성교육|보도자료|검거|적발|수사결과|'
     r'(?:가입|접속|이용|시청|다운로드).{0,18}(?:하지마|금지|주의|조심|위험)|'
-    r'(?:도박|성인물|음란물|성폭력).{0,12}(?:예방|교육|근절)|차단(?:방법|안내)'
+    r'(?:도박|성인물|음란물|성폭력).{0,12}(?:예방|교육|근절)|차단(?:방법|안내)|'
+    r'불법광고신고(?:안내|방법)|(?:광고|홍보).{0,8}(?:신고해|신고하|신고바|삭제요청)'
 )
+# A dot inside a domain or decimal is not a sentence boundary.
+SENTENCE_END = re.compile(r'[.!?](?=\s|$)|[。！？]')
+
+
+def _promotional_context(text, topic_pattern, action_pattern, deadline):
+    for sentence in SENTENCE_END.split(text):
+        if deadline:
+            deadline.check()
+        positions = [index for index, char in enumerate(sentence) if not char.isspace()]
+        compact = ''.join(sentence[index] for index in positions)
+        for topic in topic_pattern.finditer(compact):
+            if deadline:
+                deadline.check()
+            start, end = max(0, topic.start() - 45), min(len(compact), topic.end() + 100)
+            window = compact[start:end]
+            action = action_pattern.search(window)
+            if action is not None and not PROTECTIVE.search(window):
+                return topic.group(), action.group(), sentence[positions[start]:positions[end - 1] + 1]
+    return None
 
 
 def _text_units(soup, deadline):
@@ -61,17 +81,12 @@ def detect_content(page, *, feature_findings=(), deadline=None):
         text = unicodedata.normalize('NFKC', ' '.join(parts))
         text = re.sub(r'[\u200b-\u200d\ufeff]', '', text)
         text = ' '.join(text.split())
-        positions = [index for index, char in enumerate(text) if not char.isspace()]
-        compact = ''.join(text[index] for index in positions)
         for category, (topic_pattern, action_pattern) in RULES.items():
-            for topic in topic_pattern.finditer(compact):
+            context = _promotional_context(text, topic_pattern, action_pattern, deadline)
+            if context is not None:
                 if deadline:
                     deadline.check()
-                start, end = max(0, topic.start() - 45), min(len(compact), topic.end() + 100)
-                window = compact[start:end]
-                action = action_pattern.search(window)
-                if action is None or PROTECTIVE.search(window):
-                    continue
+                topic, action, excerpt = context
                 selector = build_selector(element)
                 techniques = set()
                 for feature in feature_findings:
@@ -83,16 +98,14 @@ def detect_content(page, *, feature_findings=(), deadline=None):
                         owner = next((node for node in [match, *match.parents] if node.name in BLOCKS), match)
                         if owner is element:
                             techniques.add(feature['technique'])
-                excerpt = text[positions[start]:positions[end - 1] + 1]
                 candidates.append({
                     'category': category, 'url': url, 'selector': selector,
                     'location': ' >>> '.join([*frame_path, selector]),
-                    'evidence': f'홍보 내용 후보: {topic.group()} / {action.group()}. 문맥: {excerpt}',
-                    'matched_terms': [topic.group(), action.group()],
+                    'evidence': f'홍보 내용 후보: {topic} / {action}. 문맥: {excerpt}',
+                    'matched_terms': [topic, action],
                     'techniques': sorted(techniques), 'review_status': 'needs_review',
                     'policy_version': POLICY_VERSION,
                 })
-                break
     if deadline:
         deadline.check()
     return candidates
