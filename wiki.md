@@ -30,6 +30,8 @@ xboard의 mode1=go는 추적용 파라미터가 아니라 바로 이동 동작�
 
 ### 로컬 DB 구조
 
+현재 물리 스키마의 ERD·컬럼/제약·저장 흐름은 [DB 설계서](docs/DATABASE_DESIGN.md)에서 관리합니다. 아래는 구조와 API의 요약이며 DB 상세 명세를 중복 확장하지 않습니다.
+
 `history.py`는 표준 라이브러리 sqlite3를 사용하며 analyses(요청/응답 원본 JSON·SHA-256·저장 시각), candidates(분석별 feature/content 후보 사본), reviews(후보에 대한 검토 변경 이력)를 저장합니다. UUID 분석 ID와 분석 안에서의 feature-N/content-N ID로 연결하며 다른 분석의 ID와 결합해 기록하지 않습니다. 후보 ID는 분석 사이의 동일 요소 식별자가 아닙니다. 저장 트랜잭션·외래키·스키마 user_version=1을 사용하며 알 수 없는 미래 버전은 거부합니다. 응답 해시는 저장 오류 확인용이며 전자서명이나 DB 변조 방지 기능은 아닙니다.
 
 - `GET /api/history?limit=20&offset=0`: 최근 저장 순 목록, 전체 건수. limit 1~100, offset 0 이상.
@@ -91,7 +93,9 @@ API Finding에서 검증되지 않은 고정 confidence를 제거하고 원문 s
 
 | 주제 | 기준 문서 |
 |---|---|
-| 요구 범위·담당·통과 기준 | [요구사항정의서.md](요구사항정의서.md) |
+| 요구 범위·담당·통과 기준·기능 동작 명세 | [요구사항정의서.md](요구사항정의서.md) |
+| 화면 구성·상태·상호작용 | [화면설계서](docs/SCREEN_DESIGN.md) |
+| ERD·테이블/컬럼·키·저장 흐름 | [DB 설계서](docs/DATABASE_DESIGN.md) |
 | 구조·탐지 기준·API·데이터 규격 | [wiki.md](wiki.md) |
 | 설치·실행·테스트 절차 | [README.md](README.md) |
 | 현재 상태·검증·문제·다음 작업 | [project.md](project.md) |
