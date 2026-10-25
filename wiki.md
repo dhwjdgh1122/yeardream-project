@@ -1,166 +1,63 @@
 # 공공 웹사이트 불법광고 탐지 도구 — 설계·규격
 
-현재 구현은 사용자 PC에서 실행하는 로컬 탐지·검토 도구이며, 중앙 서버에 배포한 서비스 플랫폼은 아닙니다. 구현된 DB 기능은 아래에, 보류한 서비스 확장 구상은 [향후 발전 방향 및 기대효과](#future-roadmap)에 구분합니다.
-
-### 진행 작업·점진 분석 (release-06)
-
-UI는 `POST /api/jobs`로 JobRequest를 만들고 `GET /api/jobs/{id}`를 약 500ms마다 조회합니다. 기본값은 max_pages=100, max_depth=4, total_timeout_sec=1500, prioritize_boards=true입니다. 문서 수 1~1000·깊이 0~20·시간 예산 최대 1800초를 검증합니다. `POST /api/jobs/{id}/cancel`은 협력적 중단을 요청합니다. 별도 작업 스레드에서 수집한 문서를 즉시 분석하므로 수집만으로 예산을 다 써 완료 결과가 전혀 없는 경로를 줄입니다.
-
-작업 상태는 running/completed/cancelled/failed, 진행 단계는 starting/collecting/analyzing/saving/cancelling와 종료 상태입니다. 실제 완료 건수·대기 건수·현재 URL·경과 시간을 전달하며 전체 분모가 확정되지 않아 사이트 검사율은 계산하지 않습니다. 중단 시 완료한 문서만 결과 파일·DB에 보관하고 완료 문서가 없으면 기존 결과를 덮어쓰지 않습니다. I/O/파싱 중 즉시 종료는 보장하지 않습니다.
-
-한 번에 분석 하나만 허용하며 중복 실행은 409입니다. 최근 작업 20개는 메모리에서만 보관하고 오래된 완료 작업을 제거합니다. 완료 분석의 SQLite 이력과 별개이며 앱 재시작 시 작업은 사라집니다. 같은 탭의 sessionStorage 작업 ID로 새로고침/일시 조회 실패 후 재연결할 수 있고 만료 ID는 404입니다. 기존 POST /api/analyze는 동기 호환 경로로 기본 8문서·깊이2·60초·발견순을 유지하되 max_pages/prioritize_boards를 명시하면 같은 점진 분석 로직에 적용합니다. 기존 오프라인 capture 도구도 별도의 기존 기본값을 유지합니다.
-
-순차 수집에서 게시판 목록·게시글을 일반 안내보다 우선하고, 내용 후보가 관찰된 문서의 자식 작업을 추가 우선합니다. iframe은 실제 부모 Frame이 유효할 때 먼저 처리합니다. 페이지 넘김은 발견된 HTTP(S) 링크만 따르며 자동 클릭은 하지 않습니다. query 순서 정규화와 xboard/board.php의 mode=view+number+tbnum 조합에서 page/sCat/keyset/searchword 차이를 수집 중복 판정에서 제외하되 실제 요청 URL·근거 URL은 유지합니다. 다른 게시판/게시글 ID와 일반 query 값은 합치지 않습니다.
-
-xboard의 mode1=go는 추적용 파라미터가 아니라 바로 이동 동작을 바꾸므로 중복 키에서 제거하지 않습니다. 우선 탐색 모드에서는 해당 링크로 외부 이동하는 대신 mode1을 제거한 같은 호스트의 공개 본문 보기 경로를 명시적으로 수집합니다. 원래 링크는 redirect_link 사유로 남기고 수집 문서의 source_link에 보존해 발견 링크와 실제 읽은 경로를 구분합니다. 이 어댑터는 xboard 경로·mode=view·mode1=go·number·tbnum이 모두 맞을 때만 적용합니다.
-
-알려진 첨부 링크는 attachment 사유로 대기열에 넣지 않습니다. 정적 HTTP는 MIME·Content-Disposition·Content-Length를 확인하고 압축 해제 후 누적 바이트도 5 MiB로 제한합니다. 알려진 PDF/ZIP/이미지 시그니처도 제외합니다. 웹 페이지·브라우저 DOM 이외의 첨부파일 탐지는 지원 범위가 아닙니다. 이 방어는 동적 DOM의 크기나 사이트 전체 요청 수의 한도를 뜻하지 않습니다.
-
-작성·수정·삭제·답글 작성·로그아웃 등의 mode/action/act/cmd/do 또는 경로 작업 이름은 non_readonly 사유로 자동 방문에서 제외하며 해당 진입 URL도 거부합니다. 폼을 제출하거나 사이트 데이터를 변경하는 기능은 없습니다. 우선순위가 깊이순과 다를 수 있으므로 URL별 최단 발견 깊이를 보관하고, 더 짧은 경로가 나중에 발견되면 확장할 수 있게 합니다. 오래된 깊은 대기 작업은 요청 전에 건너뜁니다.
-
-### 범위 기록 구조
-
-분석 API의 `coverage`는 기존 `crawled_pages`(성공 수집 URL의 중복 제거 목록)와 별개로 문서 컨텍스트별 수집/탐지 상태를 보관합니다. `documents`는 requested_url·최종 url·parent_url·depth·frame_path·상태(analyzed/not_analyzed/collection_failed)·이유를 담습니다. 요청 후 시간 예산으로 수집/전처리를 끝내지 못한 문서는 interrupted_context로 보존하고 coverage에 실패로 집계합니다. 따라서 이미 요청한 URL을 미방문으로 잘못 세지 않습니다. 같은 URL의 반복 iframe은 각각 셉니다.
-
-`unvisited_links`는 알려진 링크/잔여 수집 대기열 중 방문 기록이 없는 URL과 발견 문서·한도 이유를, `excluded_frames`는 제외되거나 대기열에서 수집되지 못한 iframe 위치·이유를 담습니다. `limits`에는 적용한 문서 수/깊이/시간/iframe 깊이를 기록합니다. `website_complete=false`는 사이트 전수 검사를 확정하지 않는다는 뜻이며 알려진 미방문이 0이어도 전체 미분석이 0이라는 뜻이 아닙니다. 퍼센트 검사율은 산출하지 않습니다.
-
-탐지 화면은 집계를 기본 표시하고 상세 URL/위치/사유를 펼쳐 볼 수 있습니다. 수집 성공·탐지 미완료를 탐지 완료와 구분하고, 0건은 분석한 범위의 결과로 안내합니다. 결과 필터를 바꿔도 이 범위는 바뀌지 않습니다. 범위는 DB 분석 사본과 검수용 후보 다운로드에도 보관하지만 공식 result.json/result_extra.json 규격에는 넣지 않습니다. 이전 DB 기록에 없는 범위는 소급 추정하지 않습니다.
-
-8개 한도는 공식 PDF에 없는 이전 구현 선택입니다. release-06 UI는 설정/우선순위를 도입했으며 자동 클릭 댓글이나 전수 탐지를 구현한 것은 아닙니다.
-
-### 로컬 DB 구조
-
-현재 물리 스키마의 ERD·컬럼/제약·저장 흐름은 [DB 설계서](docs/DATABASE_DESIGN.md)에서 관리합니다. 아래는 구조와 API의 요약이며 DB 상세 명세를 중복 확장하지 않습니다.
-
-`history.py`는 표준 라이브러리 sqlite3를 사용하며 analyses(요청/응답 원본 JSON·SHA-256·저장 시각), candidates(분석별 feature/content 후보 사본), reviews(후보에 대한 검토 변경 이력)를 저장합니다. UUID 분석 ID와 분석 안에서의 feature-N/content-N ID로 연결하며 다른 분석의 ID와 결합해 기록하지 않습니다. 후보 ID는 분석 사이의 동일 요소 식별자가 아닙니다. 저장 트랜잭션·외래키·스키마 user_version=1을 사용하며 알 수 없는 미래 버전은 거부합니다. 응답 해시는 저장 오류 확인용이며 전자서명이나 DB 변조 방지 기능은 아닙니다.
-
-- `GET /api/history?limit=20&offset=0`: 최근 저장 순 목록, 전체 건수. limit 1~100, offset 0 이상.
-- `GET /api/history/{analysis_id}`: 보관된 분석/요청, 후보별 전체 검토 기록.
-- `POST /api/history/{analysis_id}/candidates/{candidate_id}/reviews`: decision=promotion/normal/uncertain, 공백 제외 reviewer(최대 100자)·reason(최대 2000자), 서버 UTC 시각. 이전 기록을 지우지 않습니다.
-- `GET /history`: 목록·페이지 이동·원문/위치·검토 기록/입력 화면. 원문은 textContent로 표시합니다.
-
-분석 응답에 nullable analysis_id를 추가하며 제출 JSON에는 넣지 않습니다. 기존 JSON 생성 후 이력을 저장하고 DB 실패 시 analysis_id=null과 경고를 반환합니다. DB 오류 조회/검토는 503, 없는 분석/후보는 404입니다. 전부 실패한 분석은 보관하지 않으며 부분 분석의 수집 경고는 보존합니다. requests/응답에 있는 규칙 버전을 보관하지만 HTML 전체·페이지별 DOM snapshot은 저장하지 않습니다. 후보가 없는 문서의 개별 원문 검수나 수집 재현은 기존 오프라인 capture 도구를 사용합니다. 기존 수동 제출 검토 CLI와 이 화면의 내용 분류 기록은 별개입니다.
-
-DB는 프로젝트/배포 폴더 대신 로컬 사용자 데이터 경로에 둡니다. Windows는 LOCALAPPDATA/YearDream/history.sqlite3, 그 외는 ~/.local/share/YearDream/history.sqlite3입니다. 앱은 로컬 단일 사용자 운용을 전제로 하며 CORS 허용 출처는 비어 있습니다. 여러 사용자가 접속하는 서버로 배포하려면 인증·권한·운영 설계를 별도로 마련합니다. 현재 SQLite 외 별도 서버/벡터 DB/AI 모델 의존성은 없습니다.
-
-### 제출 후보 패키지
-
-`scripts/package_submission.py`는 깨끗한 Git 작업 트리의 추적 소스/문서와 검사된 Windows 폴더를 새 제출 후보로 묶습니다. 빌드 매니페스트·파일 해시·passed 검사 보고서·exe 해시를 검증하고 기록된 분석 빌드 입력 및 새 backend/frontend 런타임 파일이 현재 소스와 일치하는지 확인합니다. 명시된 오프라인 평가/검수 모듈의 변경은 별도 기록합니다. 검증된 파일만 실행 폴더에 복사하고, 전체 소스 ZIP·현재 설명서/점검표·서류 안내/확인된 원문 PDF·검증 근거·해시 매니페스트·ZIP 체크섬을 만듭니다. 기존 출력·실제 수집 자료·가상환경·이전 결과는 전달하지 않습니다.
-
-`ready_to_submit=false`와 미완료 서류·서명·별도 PC·접수/독립 검증 항목을 기록합니다. 제출 후보 생성과 실제 제출은 구분합니다. 자동 접수나 임의 개인정보/서명 작성은 하지 않습니다. 소스와 생성법은 BUILD_MANUAL, 남은 최종 확인은 SUBMISSION_CHECKLIST/OTHER_PC_CHECKLIST를 따릅니다.
-
-### 미검출 영역 검수 인벤토리
-
-`review_inventory.py`는 저장본의 비어 있지 않은 `_text_units` 블록 전체를 열거해 원문/해시·URL/location·현재 검출 범주·두 범주의 ContentLabel을 내보냅니다. 새 label은 expected=null·reviewed=false이며 기존 label/이유를 복사합니다. 현재 예측을 정답으로 사용하지 않습니다. capture/HTML/정답/선택자 검증은 기존 오프라인 평가와 공유하고 입력 변경 감지도 수행합니다. 블록 단위 밖의 정답은 별도 배열로 보존합니다. 프레임/동일 문구는 위치별 단위를 유지합니다.
-
-블록 수·범주 항목 수·결정/미검토 항목 수와 기존 complete 선언을 구분합니다. 인벤토리는 검수 보조 출력이며 기존 정답을 덮어쓰거나 자동 확정하지 않습니다. 실제 3차 검수는 정상 40항목 추가, 범주 불확실 목록 10위치/20항목 보류로 기록했습니다. 결정된 108항목의 FN 0과 미검출 영역의 누락 없음은 구분하며 전체 지표는 null입니다. 실행법과 근거 범위는 [검증 기록](docs/VALIDATION.md)을 따릅니다.
-
-### 반복 목록의 검수·표본 다양성 진단
-
-content suite의 `prediction_repetition`은 예측의 범주+정확한 source_text UTF-8 해시로만 그룹을 만듭니다. 공백·Unicode 차이를 정규화하지 않고 같은 원문이 다른 범주에 있으면 분리합니다. 예측 수·고유 그룹·반복 그룹·반복 그룹의 전체 건수·그룹 첫 건 이후 반복 수 및 URL/location/case_id 참조를 기록합니다. 위치별 평가/제출 단위는 그대로이며 의미상 고유 광고나 독립 데이터의 개수를 추정하지 않습니다. feature suite에는 null입니다.
-
-실제 목록 40개는 연결된 게시물 8개의 문맥을 확인해 검수했습니다. 새 연결 문맥 4개는 보조 근거로 저장하고 평가 케이스 수는 기존 7개로 유지했습니다. 제목/본문과 합쳐 68항목, TP 50·TN 18·미검수 예측 0이지만 미검출 영역을 전수 검수하지 않아 지표는 null입니다. 예측 50개의 고유 범주/원문은 16그룹이며 반복 목록 40개는 6그룹입니다. 원본·1차 보고서를 유지한 2차 자료와 한계는 [검증 기록](docs/VALIDATION.md)을 따릅니다.
-
-### 실제 저장본 일괄 평가와 검색 유도
-
-`validation_suite.py`와 `scripts/evaluate_suite.py`는 manifest의 capture/정답 해시를 검증하고 네트워크 없이 여러 저장본을 재평가합니다. 중복 ID/경로와 다른 케이스 간 겹치는 동등 페이지 URL을 거부합니다. feature/content 평가 목적을 구분하고, 부분 검수 케이스가 하나라도 있으면 집계 지표는 null입니다. 미검토 예측과 수집 경고를 별도 집계하며 기존 보고서를 덮어쓰지 않습니다. 같은 도메인의 반복 목록은 다른 요소로 계산되므로 표본 다양성으로 해석하지 않습니다.
-
-content-rules-v5는 관련 주제 근처의 ‘구글검색’을 유도 표현에 포함하고 검색 금지/주의 문맥을 기존 보호 규칙에 추가했습니다. 실제 개발용 검수에서 제목/본문 28항목의 미탐 2개를 수정했고, 이후 목록 후보 40개도 검수했습니다. 미검출 영역을 전수 검수하지 않아 전체 정확도는 계산하지 않습니다. 저장본·검수 범위·기준선·재현법은 [검증 기록](docs/VALIDATION.md)을 따릅니다. 필수 4종 제출 정책은 변경하지 않았습니다.
-
-### 일상 웃음 표현·결과 화면
-
-`jamo.py`의 연속 자모 구간 중 전체가 ㅋ/ㅎ 두 글자 이상인 경우만 JAMO에서 제외합니다. 단독 자음·다른 자모·모음/현대 자모는 유지하고 CSS 특징도 별도로 탐지합니다. textnorm.py도 같은 구간을 호환 자모로 보존해 앞 단어의 받침으로 합치지 않습니다(content-rules-v4). 원문/위치 범위는 유지합니다. capture·평가·검토 내보내기와 벤치마크는 공유 jamo 규칙 파일의 해시도 기록합니다.
-
-API Finding에서 검증되지 않은 고정 confidence를 제거하고 원문 source_text를 추가했습니다. 필수/추가 제출 파일 형식과 정책은 유지합니다. UI는 문구·유형·선택 상태·이유·URL/location 카드를 먼저 표시하고 상세 JSON은 details 안에 접어 둡니다. API에서 받은 문구·위치·경고는 textContent로만 삽입해 HTML로 실행하지 않습니다. 필터에 따른 카드/표시 건수와 전체 결과 건수를 구분하고 다운로드는 전체 응답에 연결합니다. 오류/새 요청에서는 이전 카드·경고를 비우고 오류 원인은 접힌 영역 밖에 표시합니다. 모바일 폭과 실제 Edge에서 카드/필터/다운로드/접힘을 검증합니다.
-
-### Windows 배포 구조
-
-`run_app.py`는 소스/Windows 실행 파일 공통 진입점입니다. 쓰기 가능한 결과 경로를 확인하고 127.0.0.1 소켓을 먼저 확보한 다음 단일 Uvicorn 서버를 실행합니다. 서버 준비 후 기본 브라우저를 열며 `--no-browser`로 생략할 수 있습니다. 기본 포트 8000, `--port`로 변경하며 0이면 자동 선택합니다. GPU·외부 AI API는 필요하지 않습니다.
-
-`backend/app/paths.py`는 frontend/static 리소스의 번들 경로와 출력 경로를 구분합니다. 소스 실행은 프로젝트 루트, PyInstaller frozen 실행은 sys.executable의 부모 폴더에 결과 두 파일을 저장합니다. rendered_snapshot.js는 기존 browser.py 옆에 포함합니다. PyInstaller 6.22.3의 onedir 방식으로 Playwright 드라이버와 Python 런타임을 포함하고 설치된 Edge를 사용합니다. 빌드 스크립트는 새 출력 폴더·ZIP·소스/배포 해시 매니페스트·설명서 사본을 만듭니다. 기존 결과·실제 캡처·가상환경은 배포하지 않습니다. 코드 서명·설치 프로그램·자동 업데이트·독립 PC 검증은 범위 밖/미완료입니다. 실행/빌드 방법과 결과 경로는 docs의 두 설명서를 따릅니다.
-
-### 저장본 제출 검토 구현
-
-`backend/app/review.py`와 `scripts/review_submission.py`는 자동 API 정책과 독립적인 오프라인 검토·내보내기를 제공합니다. `submission-review.json`은 capture SHA-256과 검출된 각 특징의 URL/location/technique/원문에 연결됩니다. 최초 판단은 모두 pending입니다. include/exclude에는 검토자·이유·시간대 있는 검토 시각이 필수입니다. 저장 HTML 해시·요소 단일 재식별·원문 일치·전체 검출 목록 보존·선택자 별칭 중복을 검증한 뒤 include만 명시적 true로 Result Builder에 전달합니다. pending/exclude를 false로 변환하지 않습니다.
-
-새 출력 폴더의 result.json과 함께 정확한 검토 원본 사본 및 review-audit.json(수집/검토/결과/현재 코드 해시, 자동 평가, 포함·제외·미검토 수)을 보존합니다. 해시는 변조 확인용이며 전자서명이나 쓰기 방지는 아닙니다. 검토 완료는 재현된 검출 목록에만 한정됩니다. 기존 content-labels.json의 내용 정답·법적 판단 메모를 자동 전환하지 않으며 특징/내용 정확도 지표도 변경하지 않습니다. 검토 UI·검출 누락 요소 추가·내용 후보 검토·디스크 오류 시 여러 파일의 트랜잭션 보장은 아직 없습니다. 실행법은 README를 따릅니다.
-
 ## 1. 문서 역할과 목표
 
-공통 목표는 URL에서 시작해 하위 페이지·게시글·댓글·iframe·중첩 iframe을 탐색하고 HOMOGLYPH·JAMO·TRANSPARENT·OFFSCREEN을 탐지하여 정확한 위치·근거·result.json·결과 UI를 제공하는 것입니다.
+이 문서는 **현재 구현의 아키텍처·수집/탐지·API·location·결과 데이터 계약과 향후 확장 방향**을 설명합니다. 대상 독자는 구현 구조와 기술적 동작을 확인하는 개발자·검토자입니다. 기술이 구현되어 있다는 설명은 실사이트 전수 검증이나 정확도 보장이 아닙니다.
 
-이 문서는 목표 설계이며 현재 구현 완료를 뜻하지 않습니다. 2026-10-25 업로드된 모집요강 PDF 18쪽을 대조했습니다. 평가·제출 조건은 요구사항정의서의 NFR, 결과 규격은 PDF 붙임4(10~14쪽)의 표와 예시를 기준으로 합니다. 별도 JSON Schema 파일을 제공받은 것은 아니며 PDF 기반 계약 검증과 실제 주최 측 채점은 구분합니다.
+공식 요구·평가/제출 조건과 기능별 입력/처리/출력/예외는 [요구사항정의서](요구사항정의서.md), 설치·실행·도구 명령은 [README](README.md), 현재 검사 결과·사용자 확인·알려진 문제는 [project.md](project.md), 작업 방식은 [project-guide.md](project-guide.md)를 따릅니다. 화면 배치·상태별 제어는 [화면설계서](docs/SCREEN_DESIGN.md), 물리 테이블·키·ERD는 [DB 설계서](docs/DATABASE_DESIGN.md)가 기준이며 여기서는 요약과 연결만 제공합니다.
 
-| 주제 | 기준 문서 |
-|---|---|
-| 요구 범위·담당·통과 기준·기능 동작 명세 | [요구사항정의서.md](요구사항정의서.md) |
-| 화면 구성·상태·상호작용 | [화면설계서](docs/SCREEN_DESIGN.md) |
-| ERD·테이블/컬럼·키·저장 흐름 | [DB 설계서](docs/DATABASE_DESIGN.md) |
-| 구조·탐지 기준·API·데이터 규격 | [wiki.md](wiki.md) |
-| 설치·실행·테스트 절차 | [README.md](README.md) |
-| 현재 상태·검증·문제·다음 작업 | [project.md](project.md) |
-| 작업·설명·보고 방식 | [project-guide.md](project-guide.md) |
-
-규격은 기준 문서에서 관리하고 다른 문서는 참조합니다. 현재 코드는 현황의 근거이며 요구사항을 대체하지 않습니다. 변경 시 관련 문서·코드·테스트 영향을 함께 검토합니다.
+공통 목표는 입력 URL에서 하위 페이지·게시글·댓글·iframe을 탐색해 필수4종 특징과 관련 홍보를 구분하고 정확한 위치·원문·결과 파일을 제공하는 것입니다. 현재 제품은 로컬 단일 사용자 도구이며 외부 AI API·생성 모델·RAG는 사용하지 않습니다. PDF의 공식 표/예시와 자체 구현 정책은 구분합니다. 별도 공식 JSON Schema 파일이 제공된 것으로 표현하지 않습니다.
 
 ## 2. 역할과 개발 우선순위
 
-사용자 1명이 서비스 구현·통합·탐지 기준·데이터 구성·정확도·오탐·미탐·위치 검증을 모두 담당합니다. 개발·분석은 업무 분류이며 별도 인력의 검수를 기다리는 구조가 아닙니다. 코딩 에이전트는 이 작업을 돕습니다.
-
-우선순위는 필수 요구사항 → 탐색 → 필수 4종 탐지 → 정확한 location → result.json → UI → 정확도·안정성 → 선택 기능입니다. 각 단계에서 실행·검증하며 검증을 마지막으로 미루지 않습니다. 현재 다음 작업은 project.md에서 관리합니다.
+사용자1명이 구현·분석·판정 기준·정답 검수를 담당하고 에이전트가 돕습니다. 작업 승인·변경 범위·검증 선택·설명 방식은 project-guide.md를, 현재 남은 일은 project.md를 따릅니다. 아래 기술 규격은 다음 개발을 자동 승인하는 목록이 아닙니다.
 
 ## 3. 구조
 
 ```text
-Frontend → FastAPI → Crawler → Detection Engine
+브라우저 UI → FastAPI /api/jobs → 단일 분석 작업
                                   ↓
-                         Location 생성·검증
+                         수집 → 문서별 즉시 분석
                                   ↓
-                         Result Builder → result.json
+                   특징·홍보 내용·제출 후보 선택
                                   ↓
-                            API → 결과 UI
+                  location/원문 → 결과 파일·응답
+                                  ↓
+                     SQLite 이력 → 후보 검토
 ```
 
-현재 기술은 Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·html5lib·HTML/JavaScript입니다. 수집과 탐지는 HTML5 파서로 동일한 DOM을 구성해 암시적 tbody 등 브라우저의 구조 보정을 반영합니다. 선택적인 동적 수집과 브라우저 검증에는 Playwright와 설치된 Edge를 사용합니다. 특정 프레임워크는 팀의 선택이며 공모전 지정 기술이 아닙니다.
+Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·html5lib·HTML/JavaScript를 사용하고, 선택적인 동적 수집은 Playwright와 설치된 Microsoft Edge를 사용합니다. 수집과 탐지는 HTML5 파서로 같은 DOM 구조를 구성합니다. 재현 환경·의존성 설치는 README, 설치/검사 이력은 project.md에서 관리합니다. 프레임워크와 버전은 공모전 지정 기술이 아닙니다.
 
-재현 기준은 Windows 11 x64·CPython 3.14.6·pip 26.1.2입니다. requirements.txt는 기본 실행, requirements-browser.txt는 동적 분석, requirements-dev.txt는 전체 검증 환경입니다. 공통 constraints-windows-py314.txt로 직접·하위 의존성 31개를 고정하며 선택 패키지는 필요한 설치 경로에서만 추가합니다. Edge는 외부 설치 앱으로 별도 검증합니다. 설치·기동·테스트 명령은 README를 따릅니다. Python 버전 선택에는 [Pydantic의 Python 3.14 지원 안내](https://pydantic.dev/articles/pydantic-v2-12-release)를 참고했으며 실제 설치 근거는 project.md 17절에서 관리합니다.
+| 구성 | 구현 위치·책임 |
+|---|---|
+| 시작·경로 | run_app.py, paths.py: 로컬 서버·정적 리소스·결과/DB 경로 |
+| API·작업 | main.py, models.py, jobs.py: 입력/응답·단일 작업·진행·중단 |
+| 수집·범위 | crawler.py, browser.py, limits.py, coverage.py: HTML/DOM·링크/프레임·한도·실제 범위 |
+| 특징·내용·정책 | detection.py, jamo.py, content.py, textnorm.py, policy.py, rendered.py: 탐지·정규화·원문 연결·제출 선택 |
+| 위치·결과 | location.py, comparison.py, result.py: selector·URL 동등성·출력 계약 검증 |
+| 영구 이력 | history.py: 분석·후보 사본·누적 검토 |
+| 화면 | frontend/static/index.html, history.html: 분석·이력/검토 UI |
+| 오프라인 검수 | evaluation.py, review.py, review_inventory.py, validation_suite.py 및 scripts의 관련 CLI |
 
-현재 파일 배치는 다음과 같습니다. 파일 존재와 정상 동작은 구분합니다.
+Result Builder는 result.py로 분리되어 있습니다. 기존 root result.json은 과거 산출물일 수 있으므로 최신 분석 성공의 증거로 사용하지 않습니다.
 
-```text
-backend/app/
-  __init__.py
-  main.py          # API·저장·화면 연결
-  crawler.py       # 정적 HTTP 수집·링크·iframe 탐색
-  browser.py       # 선택적 Edge 렌더링·실제 프레임 DOM 수집
-  detection.py     # 탐지 로직
-  content.py       # 도박·성인물 홍보 내용 후보
-  location.py      # 고유 selector 생성
-  limits.py        # 수집·탐지 공유 시간 예산
-  result.py        # 결과 변환·팀 규격 검증
-  models.py        # API 모델
-frontend/static/index.html
-scripts/demo_detection.py
-scripts/smoke_test.py
-tests/test_detection.py
-tests/test_api.py
-tests/test_result.py
-tests/test_location.py
-tests/test_crawler_frames.py
-tests/test_location_integration.py
-tests/test_limits.py
-scripts/test_frontend.cjs
-requirements.txt
-result.json        # 기존 산출물, 최신 성공의 증거는 아님
-```
+### 로컬 이력 저장
 
-Result Builder는 탐지와 논리적으로 분리합니다. 별도 파일·폴더로 옮길지는 구현 단계에서 결정합니다. 화면과 결과 파일 경로는 저장소 루트를 기준으로 일관되게 계산해야 합니다.
+SQLite는 분석 요청/응답 사본·SHA-256, feature/content 후보, 사람의 검토 기록을 저장합니다. 분석 ID와 분석 내부 후보 ID의 조합으로 연결하며 재분석 사이 같은 광고를 식별하는 영구 ID는 아닙니다. 스키마·복합키·제약·저장/조회 동작의 상세는 [DB 설계서](docs/DATABASE_DESIGN.md)를 따릅니다.
+
+DB는 실행 폴더가 아닌 LOCALAPPDATA/YearDream/history.sqlite3에 두고, LOCALAPPDATA가 없으면 ~/.local/share/YearDream/history.sqlite3를 사용합니다. 검토는 추가 방식이며 분석 사본·공식 JSON을 바꾸지 않습니다. DB 저장 실패는 현재 분석을 실패로 바꾸지 않고 경고·null analysis_id로 안내합니다. 전체 HTML/DOM 관찰값은 이력DB에 보관하지 않습니다.
+
+### Windows 실행·배포
+
+`run_app.py`는 소스/Windows 실행 파일 공통 진입점입니다. 쓰기 가능한 결과 경로를 확인하고 127.0.0.1 소켓을 먼저 확보한 다음 단일 Uvicorn 서버를 실행합니다. 서버 준비 후 기본 브라우저를 열며 `--no-browser`로 생략할 수 있습니다. 기본 포트 8000, `--port`로 변경하며 0이면 자동 선택합니다. GPU·외부 AI API는 필요하지 않습니다.
+
+`backend/app/paths.py`는 frontend/static 리소스의 번들 경로와 출력 경로를 구분합니다. 소스 실행은 프로젝트 루트, PyInstaller frozen 실행은 sys.executable의 부모 폴더에 결과 두 파일을 저장합니다. rendered_snapshot.js는 기존 browser.py 옆에 포함합니다. PyInstaller 6.22.3의 onedir 방식으로 Playwright 드라이버와 Python 런타임을 포함하고 설치된 Edge를 사용합니다. 빌드 스크립트는 새 출력 폴더·ZIP·소스/배포 해시 매니페스트·설명서 사본을 만듭니다. 기존 결과·실제 캡처·가상환경은 배포하지 않습니다. 코드 서명·설치 프로그램·자동 업데이트는 미구현입니다. 다른 PC 정상 작동 사용자 보고와 버전별 상세 검증은 project.md에서 구분합니다. 실행/빌드 방법과 결과 경로는 docs의 두 설명서를 따릅니다.
 
 ## 4. 수집 규격
 
 URL 검증·정규화 → Queue → 페이지 수집 → DOM 분석 → 하위 링크·iframe 등록 → 중복 제거 → 탐지 전달 흐름을 따릅니다.
 
-수집 단계에서 다음 정보를 보존해야 합니다. 이는 논리적 정보이며 현재 객체의 확정 스키마가 아닙니다. 모델 변경은 영향 검토 후 진행합니다.
+수집 단계에서 요청/최종 URL·HTML·부모/프레임 관계·실패/한도 사유를 보존합니다. 다음은 논리적 정보이며 외부 제출 JSON의 필드를 추가하라는 뜻은 아닙니다.
 
 - 입력·요청·리디렉션 후 URL, HTML, 텍스트
 - 페이지 종류(page/post/comment/iframe), 부모 페이지 관계
@@ -175,9 +72,9 @@ URL 검증·정규화 → Queue → 페이지 수집 → DOM 분석 → 하위 �
 
 사용 API의 기준은 Playwright 공식 문서의 [Page.goto](https://playwright.dev/python/docs/api/class-page#page-goto), [Frame.content](https://playwright.dev/python/docs/api/class-frame#frame-content), [BrowserType.launch](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch)를 참조합니다.
 
-일반 링크는 동일 호스트 범위를 기본으로 합니다. scheme·port·서브도메인·리디렉션·외부 iframe의 세부 허용 정책은 미확정입니다. 현재 구현은 netloc가 같은 링크와 iframe src만 허용하며 외부 iframe 지원 완료를 뜻하지 않습니다.
+현재 수집 범위는 netloc가 같은 HTTP(S) 링크·프레임이며 서브도메인·포트가 다르면 별도 범위로 처리합니다. 이 범위 정책은 구현 선택이며 다른 호스트/외부 iframe 분석 지원으로 확대 해석하지 않습니다.
 
-상대 URL·fragment·query·중복 요청·리디렉션·비HTTP 링크·실패 재시도를 처리합니다. 현재 기본 한도는 다음과 같습니다. 평가 조건·실제 사이트 검증 전의 구현값이며 공식 수치가 아닙니다.
+상대 URL·fragment·query·중복·리디렉션·비HTTP 링크와 실패를 처리합니다. 현재 API별 기본 한도는 아래와 같으며 공식 지정 수치가 아닙니다.
 
 | 한도 | 기본값·의미 |
 |---|---|
@@ -189,11 +86,29 @@ URL 검증·정규화 → Queue → 페이지 수집 → DOM 분석 → 하위 �
 
 프레임·srcdoc에 들어가도 링크 깊이는 유지하고, 프레임 안의 링크를 따라가면 1 증가합니다. 같은 링크 깊이의 프레임을 먼저 확장해 깊이가 더 큰 경로가 짧은 경로를 가리지 않도록 합니다. 깊이 초과 링크·문서 수·프레임 깊이·시간 중단 사유를 구분합니다.
 
-화면의100문서·깊이4·25분은 변경 가능한 기본값이며 고정 최대치가 아닙니다. UI 허용 범위는1~1000문서·깊이0~20·1~30분입니다. 분석 안내는 frontend의 renderWarnings에서 사유별로 묶어 건수와 접힌 상세로 표시하고 중단·실패를 먼저 배치합니다. 알려지지 않은 안내도 기타 유형에 원문을 보존하며 동일 원문은 반복 건수를 표시합니다. API의 warnings 배열·DB·다운로드는 이 화면 집계로 변경하지 않습니다.
+화면은100문서·깊이4·25분을 변경 가능한 기본값으로 제공하며 문서1~1000·깊이0~20·시간1~30분을 입력할 수 있습니다. 한도 값과 실제 분석 완료 수는 다를 수 있습니다.
 
 공유 시간은 monotonic clock으로 측정하고 요청 시작·응답 스트림 청크·수집 반복·탐지 요소 처리 사이에서 확인합니다. 이미 진행 중인 I/O·파싱·selector 탐색을 즉시 중단하는 강제 종료가 아니므로 제한을 일부 초과할 수 있습니다. 최종 결과 변환·직렬화·파일 저장은 중단 결과를 돌려주기 위한 마무리이며 이 예산으로 강제 종료하지 않습니다. 공식 30분 조건의 엄격한 준수를 검증한 기능으로 취급하지 않습니다.
 
 HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 콘텐츠를 구분해 검증합니다. 동적 모드는 제한된 관찰 시점까지 생성된 DOM·계산 스타일을 지원합니다. 자동 스크롤·클릭·로그인·Shadow DOM은 미지원입니다. DOM 수집 후 변동이 있으면 selector 재식별이 실패할 수 있으며 실제 사이트 정확도는 별도 검증합니다. 개별 프레임 실패가 전체 탐색을 중단시키지 않게 하되 전체 수집 실패는 정상 0건과 구분합니다.
+
+### 우선순위·읽기 링크·첨부 제외
+
+순차 수집에서 게시판 목록·게시글을 일반 안내보다 우선하고, 내용 후보가 관찰된 문서의 자식 작업을 추가 우선합니다. iframe은 실제 부모 Frame이 유효할 때 먼저 처리합니다. 페이지 넘김은 발견된 HTTP(S) 링크만 따르며 자동 클릭은 하지 않습니다. query 순서 정규화와 xboard/board.php의 mode=view+number+tbnum 조합에서 page/sCat/keyset/searchword 차이를 수집 중복 판정에서 제외하되 실제 요청 URL·근거 URL은 유지합니다. 다른 게시판/게시글 ID와 일반 query 값은 합치지 않습니다.
+
+xboard의 mode1=go는 추적용 파라미터가 아니라 바로 이동 동작을 바꾸므로 중복 키에서 제거하지 않습니다. 우선 탐색 모드에서는 해당 링크로 외부 이동하는 대신 mode1을 제거한 같은 호스트의 공개 본문 보기 경로를 명시적으로 수집합니다. 원래 링크는 redirect_link 사유로 남기고 수집 문서의 source_link에 보존해 발견 링크와 실제 읽은 경로를 구분합니다. 이 어댑터는 xboard 경로·mode=view·mode1=go·number·tbnum이 모두 맞을 때만 적용합니다.
+
+알려진 첨부 링크는 attachment 사유로 대기열에 넣지 않습니다. 정적 HTTP는 MIME·Content-Disposition·Content-Length를 확인하고 압축 해제 후 누적 바이트도 5 MiB로 제한합니다. 알려진 PDF/ZIP/이미지 시그니처도 제외합니다. 웹 페이지·브라우저 DOM 이외의 첨부파일 탐지는 지원 범위가 아닙니다. 이 방어는 동적 DOM의 크기나 사이트 전체 요청 수의 한도를 뜻하지 않습니다.
+
+작성·수정·삭제·답글 작성·로그아웃 등의 mode/action/act/cmd/do 또는 경로 작업 이름은 non_readonly 사유로 자동 방문에서 제외하며 해당 진입 URL도 거부합니다. 폼을 제출하거나 사이트 데이터를 변경하는 기능은 없습니다. 우선순위가 깊이순과 다를 수 있으므로 URL별 최단 발견 깊이를 보관하고, 더 짧은 경로가 나중에 발견되면 확장할 수 있게 합니다. 오래된 깊은 대기 작업은 요청 전에 건너뜁니다.
+
+### 실제 탐색 범위 응답
+
+분석 API의 `coverage`는 기존 `crawled_pages`(성공 수집 URL의 중복 제거 목록)와 별개로 문서 컨텍스트별 수집/탐지 상태를 보관합니다. `documents`는 requested_url·최종 url·parent_url·depth·frame_path·상태(analyzed/not_analyzed/collection_failed)·이유를 담습니다. 요청 후 시간 예산으로 수집/전처리를 끝내지 못한 문서는 interrupted_context로 보존하고 coverage에 실패로 집계합니다. 따라서 이미 요청한 URL을 미방문으로 잘못 세지 않습니다. 같은 URL의 반복 iframe은 각각 셉니다.
+
+`unvisited_links`는 알려진 링크/잔여 수집 대기열 중 방문 기록이 없는 URL과 발견 문서·한도 이유를, `excluded_frames`는 제외되거나 대기열에서 수집되지 못한 iframe 위치·이유를 담습니다. `limits`에는 적용한 문서 수/깊이/시간/iframe 깊이를 기록합니다. `website_complete=false`는 사이트 전수 검사를 확정하지 않는다는 뜻이며 알려진 미방문이 0이어도 전체 미분석이 0이라는 뜻이 아닙니다. 퍼센트 검사율은 산출하지 않습니다.
+
+탐지 화면은 집계를 기본 표시하고 상세 URL/위치/사유를 펼쳐 볼 수 있습니다. 수집 성공·탐지 미완료를 탐지 완료와 구분하고, 0건은 분석한 범위의 결과로 안내합니다. 결과 필터를 바꿔도 이 범위는 바뀌지 않습니다. 범위는 DB 분석 사본과 검수용 후보 다운로드에도 보관하지만 공식 result.json/result_extra.json 규격에는 넣지 않습니다. 이전 DB 기록에 없는 범위는 소급 추정하지 않습니다.
 
 ## 5. 탐지 기준
 
@@ -210,9 +125,9 @@ PDF 5쪽은 font-size 0~1px, position:absolute; left:-9999px, display:none을 OF
 
 위장·은닉 특징 발견과 광고 판정은 구분합니다. policy.py의 feature-content-policy-v1은 특징의 실제 원문 구간이 관련 홍보 주제/유도 표현 구간과 겹치는 경우만 자동 제출 후보로 선택합니다. 이것은 구현 정책이며 PDF가 키워드·임계값을 지정한 것은 아닙니다. 규칙상 true와 법적 위반 확정을 동일시하지 않으며 고정 feature confidence도 측정 정확도가 아닙니다. 실제 판정 정확도는 별도 검수가 필요합니다.
 
-2026-10-25 사용자 설명에 따라 도박·성인물 후보 판별을 구현했고 이후 PDF 1·5쪽에서도 범위를 확인했습니다. 실제 gen.go.kr 일반 표시 글의 공백에 대응한 v1·문장 문맥 v2를 거쳐 현재 content-rules-v5입니다. 표현/은닉 4종과 내용 범주는 독립적입니다. content_candidates는 검수용이고 result_extra.json은 PDF 13쪽의 ETC+extra_finding 형식입니다. 일반 표시 후보를 필수 4종으로 임의 분류하지 않으며 후보 부재도 광고 부재를 보장하지 않습니다.
+현재 내용 판별 규칙은 content-rules-v5입니다. 변경·실사이트 검사 이력은 project.md에서 관리합니다. 표현/은닉 4종과 내용 범주는 독립적입니다. content_candidates는 검수용이고 result_extra.json은 PDF 13쪽의 ETC+extra_finding 형식입니다. 일반 표시 후보를 필수 4종으로 임의 분류하지 않으며 후보 부재도 광고 부재를 보장하지 않습니다.
 
-v3는 텍스트를 가장 가까운 블록에 귀속해 inline 조각만 합치고 문단은 섞지 않습니다. 문장 경계와 주제 앞 45/뒤 100자의 규칙은 유지하며 도메인 내부 마침표를 경계로 만들지 않습니다. textnorm.py는 NFKC·현대 한글/호환 자모 재조합·제한된 키릴 닮은꼴→Latin 매핑·casefold·공백/일부 zero-width 제거를 판별용으로 적용합니다. 정규화 문자마다 원문 범위를 추적해 원문 자체는 바꾸지 않습니다. 카지노·성인물 등의 주제와 가입/보너스/시청/바로가기 등의 단서가 함께 필요합니다. PDF 예시의 mega-BET·슬롯 체험·먹튀검증/텔레그램 유도도 검증합니다. 예방교육·단속 보도·광고 신고/삭제 요청·피해상담 등 명시적 보호 문맥은 제외합니다. 전체 Unicode 위장·모든 자모 조합·은어·의미 이해를 지원하는 것은 아닙니다.
+내용 판별은 텍스트를 가장 가까운 블록에 귀속해 inline 조각만 합치고 문단은 섞지 않습니다. 문장 경계와 주제 앞 45/뒤 100자의 규칙은 유지하며 도메인 내부 마침표를 경계로 만들지 않습니다. textnorm.py는 NFKC·현대 한글/호환 자모 재조합·제한된 키릴 닮은꼴→Latin 매핑·casefold·공백/일부 zero-width 제거를 판별용으로 적용합니다. 정규화 문자마다 원문 범위를 추적해 원문 자체는 바꾸지 않습니다. 카지노·성인물 등의 주제와 가입/보너스/시청/바로가기 등의 단서가 함께 필요합니다. PDF 예시의 mega-BET·슬롯 체험·먹튀검증/텔레그램 유도도 검증합니다. 예방교육·단속 보도·광고 신고/삭제 요청·피해상담 등 명시적 보호 문맥은 제외합니다. 전체 Unicode 위장·모든 자모 조합·은어·의미 이해를 지원하는 것은 아닙니다.
 
 후보 단위는 URL+location+category이며 GAMBLING/ADULT_CONTENT로 분류합니다. selector·원문·근거 문맥·matched_terms·policy_version·needs_review 상태와 feature_links(location+technique)를 보존합니다. HOMOGLYPH/JAMO는 실제 의심 문자 구간, CSS 기법은 해당 요소의 직접 텍스트 중 공백/제거 대상 zero-width를 제외한 구간이 홍보 주제/유도 표현과 겹쳐야 연결합니다. URL·프레임·블록·문장을 넘겨 무관한 특징을 연결하지 않으며 techniques는 이 링크에서 계산합니다. 문단 안 별도 숨김 메뉴, 같은 요소의 전각 인사말/외국어 접두사, 숨김 zero-width만으로 홍보를 위장했다고 간주하지 않습니다. 후보 자체는 confidence나 is_violation 없이 검토 상태를 유지합니다.
 
@@ -228,9 +143,15 @@ v3는 텍스트를 가장 가까운 블록에 귀속해 inline 조각만 합치�
 
 rendered.py의 rendered-style-rules-v1은 zero opacity·계산된 visibility·투명 글자·동일 불투명 RGB 단색 배경을 TRANSPARENT로, 조상 포함 display:none·상속된 0~1px 글꼴·양의 크기를 가진 요소의 전체가 문서 왼쪽/위쪽 음수 영역에 있는 배치를 OFFSCREEN으로 판단합니다. 좌표에 스크롤을 더해 문서 기준으로 비교하며 일반적인 스크롤 아래 콘텐츠와 일부 보이는 음수 배치는 제외합니다. 그림자/윤곽선이 있으면 글자색만으로 투명 판정하지 않습니다. 관찰값이 있으면 CSS 기법에서 inline 후보보다 우선하여 !important·실제 레이아웃을 반영합니다. 관찰 대상이 아닌 요소에는 CSS 후보를 임의 보충하지 않습니다.
 
-배경 이미지·그라데이션·반투명 합성·표준 RGB 이외 색상 계산은 추측하지 않습니다. 가림·clip·양의 방향 화면 밖·SVG·가상 요소·Shadow DOM·프레임 경계 밖 iframe 요소의 은닉 전파는 미지원입니다. HOMOGLYPH/JAMO와 노드 간 문자 조합 범위는 이번 작업에서 바꾸지 않았습니다. 합성 특징 검증은 광고 여부를 확정한 정답이 아닙니다.
+배경 이미지·그라데이션·반투명 합성·표준 RGB 이외 색상 계산은 추측하지 않습니다. 가림·clip·양의 방향 화면 밖·SVG·가상 요소·Shadow DOM·프레임 경계 밖 iframe 요소의 은닉 전파는 미지원입니다. HOMOGLYPH/JAMO와 노드 간 문자 조합은 별도 문자 판별 규칙을 적용합니다. 합성 특징 검증은 광고 여부를 확정한 정답이 아닙니다.
 
 관찰값은 capture.json의 문서별 rendered_style(schema_version=1)에 보존합니다. 현재 parser가 선택자를 정확히 한 요소로 해석하고 원문이 일치하는지 검증하며 중복·잘못된 경로·원문 불일치는 평가를 거부합니다. 저장 HTML과 관찰값이 함께 labels의 capture 해시에 연결됩니다. 보고서는 렌더링 판정 코드 해시·정책 버전 및 observation_basis를 기록합니다. 과거 browser 캡처라도 관찰값이 없으면 정적 문서 수로 집계해 현재 computed style 평가로 오해하지 않게 합니다. 정적 사례의 한계는 [사례 설명](tests/fixtures/detection/README.md)을 따릅니다.
+
+### JAMO의 웃음 표현 예외와 알려진 한계
+
+`jamo.py`의 연속 자모 구간 중 전체가 ㅋ/ㅎ 두 글자 이상인 경우만 JAMO에서 제외합니다. 단독 자음·다른 자모·모음/현대 자모는 유지하고 CSS 특징도 별도로 탐지합니다. textnorm.py도 같은 구간을 호환 자모로 보존해 앞 단어의 받침으로 합치지 않습니다(content-rules-v4). 원문/위치 범위는 유지합니다. capture·평가·검토 내보내기와 벤치마크는 공유 jamo 규칙 파일의 해시도 기록합니다.
+
+현재 범위에는 호환 자모인 아래아(ㆍ)도 포함됩니다. 사용자 이력 검토에서 정상 행정 문구15개가 이 문자 때문에 JAMO 검토 대상으로 잡힌 사실을 확인했습니다. 제출 후보 선택과는 구분되며 이 알려진 한계는 아직 수정하지 않았습니다. 근거와 후보 중복 관찰은 project.md의 현재 요약을 따릅니다.
 
 ## 6. URL·location 규격
 
@@ -300,7 +221,7 @@ PDF는 is_violation Boolean을 필수로 두고 true 예시를 제시하지만 �
 
 Result Builder의 판정값 누락 시 true로 바꾸던 호환 동작은 제거했습니다. 내부 직접 호출도 source_text와 명시적 Boolean is_violation이 필요하며 누락/잘못된 자료형은 거부합니다. API는 선택된 후보만 true로 전달하고 미판정 특징은 제외합니다. 별도 내부 호출에서 명시한 false는 보존하지만 자동 정책이 근거 부족을 정상으로 변환하지는 않습니다. location은 6절을 따릅니다.
 
-필수 필드·자료형·허용 기법·ID·중복·시간·빈 배열을 검증합니다. 두 결과 모두 UTF-8 BOM 없이 meta+findings 두 키와 단일 findings 배열로 저장합니다. 기본 위치는 프로젝트 루트의 result.json 및 result_extra.json입니다. PDF는 구동 파일 폴더를 원칙으로 하며 다른 경로면 사용설명서 첫 장에 파일별 경로를 안내합니다. 배포용 구동 파일·동시 요청 및 두 파일 저장 중 디스크 오류의 트랜잭션 보장은 아직 미구현입니다.
+필수 필드·자료형·허용 기법·ID·중복·시간·빈 배열을 검증합니다. 두 결과 모두 UTF-8 BOM 없이 meta+findings 두 키와 단일 findings 배열로 저장합니다. 소스 실행은 프로젝트 루트, 패키지 실행은 실행 파일 옆에 result.json 및 result_extra.json을 저장합니다. PDF는 구동 파일 폴더를 원칙으로 하며 다른 경로면 사용설명서 첫 장에 파일별 경로를 안내합니다. Windows 구동 파일과 단일 분석 동시 실행 제한은 구현되어 있습니다. 두 파일 저장 중 디스크 오류에 대한 원자적 트랜잭션 보장은 없습니다.
 
 result_extra.json은 같은 실행 meta를 사용하며 id/url/location/evidence_text/technique/extra_finding을 갖습니다. technique은 ETC이고 extra_finding은 GAMBLING_PROMOTION_CANDIDATE 또는 ADULT_CONTENT_PROMOTION_CANDIDATE입니다. PDF 13쪽 추가 결과 예시처럼 is_violation을 자동 추가하지 않습니다. 이 파일은 본심사 참고용 추가 제안이며 필수 4종 성능을 대체하지 않습니다. 성공한 0건 분석에서도 빈 findings로 저장하며 수집 실패/분석 전 시간 초과 시 기존 파일을 보존합니다.
 
@@ -308,37 +229,49 @@ PDF 12쪽에 따라 정답 핵심은 URL+실제 위치+기법이고 evidence_tex
 
 ## 8. API와 UI
 
-현재 복구 대상으로 유지할 경로입니다. 정상 실행 여부는 project.md에서 관리합니다.
+### 경로와 입력
 
 | 경로 | 역할 |
 |---|---|
-| GET / | UI 제공 |
+| GET /, GET /history | 분석 화면, 이력/후보 검토 화면 |
 | GET /api/health | 서버 생존 확인 |
-| POST /api/analyze | URL 분석·결과 반환 |
+| POST /api/jobs | 화면용 비동기 분석 생성,202와 작업ID 반환 |
+| GET /api/jobs/{job_id} | 작업 요청·상태·진행·경과·결과/error 조회 |
+| POST /api/jobs/{job_id}/cancel | 협력적 중단 요청 |
+| POST /api/analyze | 기존 동기 호환 분석·결과 반환 |
+| GET /api/history | 이력 목록, limit기본20(1~100), offset기본0(0이상) |
+| GET /api/history/{analysis_id} | 요청·응답 사본·후보별 검토 전체 |
+| POST /api/history/{analysis_id}/candidates/{candidate_id}/reviews | 내용 분류 검토 추가 |
 
-요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, content_candidates, content_policy_version, result_json, result_extra_json, warnings입니다. API finding의 technique/selector/location/url/evidence/source_text와 제출용 finding은 구분합니다. Result Builder는 내부 source_text를 제출 evidence_text로 변환하며 화면 설명 evidence를 제출 원문에 섞지 않습니다.
+분석 필수 입력은url입니다. 공통 선택값은collection_mode=static/browser(기본static), render_wait_ms=500(0~5000정수), max_pages(1~1000정수), max_depth(0~20정수), total_timeout_sec(0초과~1800이하 유한숫자), prioritize_boards입니다. 작업API의 기본값은100/4/1500초/우선탐색true, 동기API는8/2/60초/false입니다. UI는 시간 분을 초로 변환합니다. 이 값들은 공식 지정 한도가 아닙니다.
 
-응답은 submission_policy_version과 각 finding의 submission_status/submission_reason/submission_categories를 포함합니다. 화면은 위장·은닉 특징, 내용 후보, 선택된 4종 제출 후보와 검토 대상을 구분합니다. result_json은 선택된 후보만 포함하므로 API finding 수와 다를 수 있습니다.
+응답 AnalysisResponse는url·collection_mode·page_title·crawled_pages·findings·content_candidates·content_policy_version·submission_policy_version·result_json·result_extra_json·warnings·coverage·nullable analysis_id를 제공합니다. 내부 finding의selector/location/evidence/source_text와 제출용 finding은 구분합니다. 제출 후보 선택 상태/이유/범주를 제공하고 result_json은 선택 후보만 포함하므로 전체 특징 수와 다를 수 있습니다.
 
-한 페이지는 4종 특징·내용 후보·제출 후보 평가 세 단계가 모두 끝나야 완료입니다. 공유 Deadline이 중간 만료되면 해당 페이지의 결과를 함께 버립니다. 앞서 완료한 페이지가 없으면 504와 기존 두 파일 보존, 있으면 그 결과와 부분 경고를 반환합니다.
+### 작업 상태·중단·재연결
 
-browser 모드는 Playwright·Edge가 필요하며 시작 실패는 HTTP 503입니다. 정적으로 자동 전환하지 않습니다. 브라우저 시작·이동·추가 대기·수집·탐지는 동일 Deadline을 사용합니다. 이동 timeout은 남은 시간과 10초 중 작은 값이며 대기도 남은 시간으로 제한합니다. 드라이버 시작·DOM 직렬화·종료 등 모든 작업을 즉시 강제 종료하는 기능은 아닙니다. 오류 응답은 기존 결과 파일을 보존합니다. collection_mode는 API·UI 안내이며 제출 JSON에는 추가하지 않습니다.
+UI는 `POST /api/jobs`로 JobRequest를 만들고 `GET /api/jobs/{id}`를 약 500ms마다 조회합니다. 기본값은 max_pages=100, max_depth=4, total_timeout_sec=1500, prioritize_boards=true입니다. 문서 수 1~1000·깊이 0~20·시간 예산 최대 1800초를 검증합니다. `POST /api/jobs/{id}/cancel`은 협력적 중단을 요청합니다. 별도 작업 스레드에서 수집한 문서를 즉시 분석하므로 수집만으로 예산을 다 써 완료 결과가 전혀 없는 경로를 줄입니다.
 
-crawled_pages는 수집 성공한 문서 URL의 중복 없는 목록입니다. srcdoc과 동일 URL의 여러 프레임은 위치별 finding으로 구분됩니다. 전체 수집 실패는 HTTP 502로 반환하고 기존 결과 파일을 덮어쓰지 않습니다. 일부 실패·프레임 제외·컨텍스트 한도 도달은 warnings로 반환하며 UI에도 표시합니다. warnings는 API 안내 필드이고 제출 JSON에 추가하지 않습니다. 따라서 파일만으로 분석 범위 완전성을 확인하는 정책은 추후 검토합니다.
+작업 상태는 running/completed/cancelled/failed, 진행 단계는 starting/collecting/analyzing/saving/cancelling와 종료 상태입니다. 실제 완료 건수·대기 건수·현재 URL·경과 시간을 전달하며 전체 분모가 확정되지 않아 사이트 검사율은 계산하지 않습니다. 중단 시 완료한 문서만 결과 파일·DB에 보관하고 완료 문서가 없으면 기존 결과를 덮어쓰지 않습니다. I/O/파싱 중 즉시 종료는 보장하지 않습니다.
 
-링크 깊이·시간 제한도 warnings로 안내합니다. 수집·탐지 중 시간 초과로 분석을 끝낸 페이지가 하나도 없으면 HTTP 504이고 기존 파일을 보존합니다. 완료한 페이지가 있으면 그 결과를 반환하되 나머지 미분석을 명시합니다. 분석 도중 중단된 페이지의 중간 finding은 포함하지 않습니다. crawled_pages는 수집 성공 목록이며 모든 문서의 탐지 완료를 뜻하지 않습니다.
+한 번에 분석 하나만 허용하며 중복 실행은 409입니다. 최근 작업 20개는 메모리에서만 보관하고 오래된 완료 작업을 제거합니다. 완료 분석의 SQLite 이력과 별개이며 앱 재시작 시 작업은 사라집니다. 같은 탭의 sessionStorage 작업 ID로 새로고침/일시 조회 실패 후 재연결할 수 있고 만료 ID는 404입니다. 기존 POST /api/analyze는 동기 호환 경로로 기본 8문서·깊이2·60초·발견순을 유지하되 max_pages/prioritize_boards를 명시하면 같은 점진 분석 로직에 적용합니다. 기존 오프라인 capture 도구도 별도의 기존 기본값을 유지합니다.
 
-포트와 실행 명령은 README를 따릅니다. UI는 같은 서버의 `/api/analyze`를 상대 경로로 호출합니다.
+### 오류·부분 결과
 
-UI 목표는 URL 입력·실행·상태 안내·전체/유형별 건수·URL·location·근거·필터·JSON 다운로드입니다. 응답 원본을 보존해 필터링합니다. Frontend에 수집·탐지 로직을 넣지 않습니다.
+모델 입력 오류는422, 중복 분석은409, 없는 작업/이력/후보는404입니다. 이력 조회/검토의 DB 오류는503입니다. 검토 입력은decision=promotion/normal/uncertain, reviewer1~100자·reason1~2000자이며 서버에서 앞뒤 공백을 제거한 뒤 빈 값을 거부합니다. 서버UTC시각과 함께 기록을 추가합니다.
 
-JSON 다운로드는 현재 화면의 마지막 성공 응답에 담긴 result_json 전체를 사용합니다. 유형 필터는 다운로드 내용에 영향을 주지 않습니다. Blob(application/json;charset=utf-8)과 임시 링크로 result.json을 저장하고 링크·object URL을 정리합니다. UTF-8 BOM 없이 직렬화하며 API·서버 파일과의 동등성은 파싱한 JSON 값 기준입니다. 기본/동적·부분 분석·0건 모두 저장할 수 있습니다. 부분 분석의 warnings는 기존 제출 규격에 추가하지 않으며 화면 안내를 유지합니다.
+브라우저 시작 불가는503, 전체 수집 실패는502, 완료 문서 없는 시간 예산 소진은504로 구분합니다. 한 문서는 특징·내용·제출 선택까지 마쳐야 완료입니다. 중단된 문서의 중간 후보는 포함하지 않고, 완료 문서가 있으면 부분 결과/안내를 반환합니다. 완료 문서 없는 중단/실패는 이전 파일을 유지합니다. 브라우저 실패 시 정적 모드로 자동 전환하지 않습니다.
 
-UI는 4종 특징 수와 내용 후보 수를 따로 표시합니다. 범주 필터는 내용 후보를, 기법 필터는 해당 특징과 그 특징이 연결된 후보를 표시합니다. 별도 ‘광고 후보 다운로드’는 content-candidates.json으로 purpose=content_candidate_review·규칙 버전·meta·수집 방식·warnings·전체 candidates를 저장합니다. ‘추가 탐지 결과 다운로드’는 마지막 응답의 result_extra_json을 result_extra.json으로 저장합니다. 세 다운로드 모두 필터에 독립적이며 새 분석·실패·빈 URL 제출 때 비활성화합니다. 내용 후보를 법적 위반 확정으로 취급하지 않습니다.
+위 분석 오류는 동기API에서는 해당 HTTP상태로 반환합니다. 비동기 작업은 생성의202와 실행 결과를 구분하며 이후 status/error 안에서 실패 원인과 status_code를 확인합니다. 작업 조회 자체의HTTP200만으로 분석 성공을 판단하지 않습니다.
 
-분석 전과 새 분석 시작 시 다운로드를 비활성화하고 성공 응답 이후에만 활성화합니다. 실패·빈 URL 제출 후에는 과거 응답으로 내려받지 못하게 합니다. 공유 서버 파일을 다시 가져오는 경로는 추가하지 않으며 다른 요청이 파일을 덮어써도 현재 화면의 응답을 유지합니다.
+### UI·다운로드
 
-Job 기반 `/api/detection`, `/api/detection/{id}`, `/api/detection/{id}/status`, `/api/detection/{id}/result`, `/api/detection/{id}/download`는 이전 문서의 향후 제안이며 도입 미확정입니다. 현재 API가 아닙니다. queued/running/completed/failed/timeout은 목표 상태 의미이며 기본 안내가 반드시 상태 API를 요구하지는 않습니다.
+UI는 같은 서버의 /api/jobs를 상대경로로 호출하고 약500ms 간격으로 조회합니다. 상세 배치·상태별 잠금·현재 범위 안내는 [화면설계서](docs/SCREEN_DESIGN.md)를 따릅니다. 수집/탐지 로직은 서버에 두며 원문·URL·안내를textContent로 표시합니다. 유형 필터는 표시만 바꾸며 분석 범위를 확대하지 않습니다.
+
+분석 안내는 사유별 건수·접힌 상세로 묶고 중단·실패를 먼저 표시합니다. 동일 원문은 반복 건수를 표시하지만 API/DB/다운로드의 원문 배열은 유지합니다. 이력 상세의 개별 안내 문단은 분석 화면과 별도입니다.
+
+세 다운로드는 현재 화면이 보관한 마지막 응답의result_json·result_extra_json·전체content_candidates를 각각 사용합니다. 검수용content-candidates.json의purpose는content_candidate_review이며 규칙 버전·메타·범위·안내를 포함합니다. 필터에 독립적이고 서버 파일을 다시 가져오지 않습니다. Blob으로UTF-8 BOM 없이 저장하며 파일과의 동등성은 파싱한JSON값 기준입니다. 새 분석·실패·빈URL·완료 결과 없는 중단에서는 다운로드를 비활성화합니다.
+
+이전 문서의 /api/detection 계열이나queued/timeout을 별도 작업status로 두는 구상은 현재 계약이 아닙니다. 현재 작업status와 progress.phase는 위 규격을 기준으로 합니다.
 
 ## 9. 검증·변경 원칙
 
@@ -361,12 +294,7 @@ capture/evaluate는 내용 후보·규칙 버전·후보 수도 별도 기록합
 
 평가 단위는 최상위 URL+실제 요소 위치+기법입니다. 검토된 양성의 탐지/누락을 TP/FN, 정상의 탐지/미탐지를 FP/TN으로 기록합니다. 부분 검수는 미검토 탐지를 unknown으로 남기고 지표를 계산하지 않습니다. complete=true는 저장된 문서의 모든 양성 특징 검수 선언이며 정답 밖 탐지는 FP입니다. 명시한 policy·전 항목의 reviewed/Boolean 정답/근거가 필요합니다. feature/content 지표는 제출 선택 정확도나 전체 사이트 정확도가 아닙니다. capture/evaluate는 submission_assessments·정책 버전과 코드/정규화 해시도 기록하며 submission_candidate_count는 단순 선택 건수입니다. 고정 confidence나 자동 true를 정답으로 사용하지 않습니다.
 
-## 10. 미확정 사항·선택 기능
-
-PDF 원문·출력 표/예시는 대조했습니다. 판정 정책·자체 정확도 목표, 실제 사이트 동적 수집 범위, 호스트/iframe 정책·탐색 한도, 다른 Python/OS 호환성, 배포 구동 파일과 설치 방식은 추가 검증이 필요합니다. PDF는 Python/FastAPI/브라우저 종류를 지정하지 않습니다.
-
-로컬 SQLite 이력·후보 검토는 구현했습니다. 추가 탐지 범위 확대·사례 검색·RAG·고급 UI 등 신규 기능 개발은 보류하며, 재개 시 해결할 문제와 효과를 먼저 확인합니다. 필요성이 확인되지 않은 기술을 먼저 도입하지 않습니다.
-## 내용 후보 평가 도구 추가 (2026-10-25)
+### 내용 정답 검수
 
 `scripts/validate_site.py evaluate RUN --kind content`는 `content-labels.json`을 사용하고 `content-report.json`으로 저장합니다. 기본 evaluate는 기존 4종 기법 평가입니다. 새 capture는 두 정답 초안을 모두 생성하며, 이전 저장본에는 `init-content-labels RUN`으로 내용 정답을 추가합니다. 기존 파일 덮어쓰기는 거부합니다.
 
@@ -374,7 +302,39 @@ PDF 원문·출력 표/예시는 대조했습니다. 판정 정책·자체 정�
 
 원본 HTML·capture 해시와 정답 연결, 선택자 유일성, 동등한 선택자의 중복을 검사합니다. 보고서는 정답 및 평가 코드 해시도 기록합니다. 법적 판단 메모는 선택적 violation_verdict/reviewer/verdict_reason으로 보존하며 내용 존재 평가와 분리합니다. 기본은 미판정이고 API나 제출 스키마에 자동 반영하지 않습니다.
 
-실제 저장본 본문 일부 검수: 107 GAMBLING TP 1, 151 ADULT_CONTENT TP 1, 454470 예방교육 본문 두 범주 TN 2. 세 저장본 모두 부분 검수여서 전체 지표는 null입니다. 원본 및 검수 파일은 Git에서 제외된 .validation/에 보관합니다. 사용 예시와 상세 필드는 README의 내용 후보 평가 절을 참고합니다.
+### 전체 텍스트 검수 인벤토리
+
+`review_inventory.py`는 저장본의 비어 있지 않은 `_text_units` 블록 전체를 열거해 원문/해시·URL/location·현재 검출 범주·두 범주의 ContentLabel을 내보냅니다. 새 label은 expected=null·reviewed=false이며 기존 label/이유를 복사합니다. 현재 예측을 정답으로 사용하지 않습니다. capture/HTML/정답/선택자 검증은 기존 오프라인 평가와 공유하고 입력 변경 감지도 수행합니다. 블록 단위 밖의 정답은 별도 배열로 보존합니다. 프레임/동일 문구는 위치별 단위를 유지합니다.
+
+### 반복 후보 집계
+
+content suite의 `prediction_repetition`은 예측의 범주+정확한 source_text UTF-8 해시로만 그룹을 만듭니다. 공백·Unicode 차이를 정규화하지 않고 같은 원문이 다른 범주에 있으면 분리합니다. 예측 수·고유 그룹·반복 그룹·반복 그룹의 전체 건수·그룹 첫 건 이후 반복 수 및 URL/location/case_id 참조를 기록합니다. 위치별 평가/제출 단위는 그대로이며 의미상 고유 광고나 독립 데이터의 개수를 추정하지 않습니다. feature suite에는 null입니다.
+
+### 여러 저장본 일괄 평가
+
+`validation_suite.py`와 `scripts/evaluate_suite.py`는 manifest의 capture/정답 해시를 검증하고 네트워크 없이 여러 저장본을 재평가합니다. 중복 ID/경로와 다른 케이스 간 겹치는 동등 페이지 URL을 거부합니다. feature/content 평가 목적을 구분하고, 부분 검수 케이스가 하나라도 있으면 집계 지표는 null입니다. 미검토 예측과 수집 경고를 별도 집계하며 기존 보고서를 덮어쓰지 않습니다. 같은 도메인의 반복 목록은 다른 요소로 계산되므로 표본 다양성으로 해석하지 않습니다.
+
+### CLI 제출 후보 수동 검토
+
+`backend/app/review.py`와 `scripts/review_submission.py`는 자동 API 정책과 독립적인 오프라인 검토·내보내기를 제공합니다. `submission-review.json`은 capture SHA-256과 검출된 각 특징의 URL/location/technique/원문에 연결됩니다. 최초 판단은 모두 pending입니다. include/exclude에는 검토자·이유·시간대 있는 검토 시각이 필수입니다. 저장 HTML 해시·요소 단일 재식별·원문 일치·전체 검출 목록 보존·선택자 별칭 중복을 검증한 뒤 include만 명시적 true로 Result Builder에 전달합니다. pending/exclude를 false로 변환하지 않습니다.
+
+새 출력 폴더의 result.json과 함께 정확한 검토 원본 사본 및 review-audit.json(수집/검토/결과/현재 코드 해시, 자동 평가, 포함·제외·미검토 수)을 보존합니다. 해시는 변조 확인용이며 전자서명이나 쓰기 방지는 아닙니다. 검토 완료는 재현된 검출 목록에만 한정됩니다. 기존 content-labels.json의 내용 정답·법적 판단 메모를 자동 전환하지 않으며 특징/내용 정확도 지표도 변경하지 않습니다. 이 CLI에는 검토UI·누락 요소 추가·내용 분류 검토·여러 파일의 원자적 저장이 없습니다. /history의 DB 내용 분류 검토와 별개입니다. 실행법은 README를 따릅니다.
+
+실행 명령은README, 날짜별 입력·검수 수치·원본/보고서 근거는project.md와docs/VALIDATION.md에 기록합니다. 같은 실행 수치를 여러 문서의 현재 현황으로 복사하지 않습니다.
+
+## 10. 미확정 사항·선택 기능
+
+현재 정한 구현 정책과 아직 검증하지 않은 범위를 구분합니다. 동일netloc 수집·한도·필수/추가 결과·후보 선택은 위 현재 규격이며, 전체 광고 정확도·독립된4종 실사이트 양성·동적 대규모 처리·다른Python/OS·엄격한 공식 시간 준수는 검증 완료가 아닙니다. 현재 이슈·제출 준비 상태는project.md가 기준입니다.
+
+로컬SQLite 이력·검토는 구현되어 있습니다. 사례 검색·RAG·공동 이용 서비스 등 확장은 아래 보류 로드맵으로 관리하며 문서 점검을 새 기능 개발 승인으로 해석하지 않습니다.
+
+### 제출 후보 패키지 구조
+
+`scripts/package_submission.py`는 깨끗한 Git 작업 트리의 추적 소스/문서와 검사된 Windows 폴더를 새 제출 후보로 묶습니다. 빌드 매니페스트·파일 해시·passed 검사 보고서·exe 해시를 검증하고 기록된 분석 빌드 입력 및 새 backend/frontend 런타임 파일이 현재 소스와 일치하는지 확인합니다. 명시된 오프라인 평가/검수 모듈의 변경은 별도 기록합니다. 검증된 파일만 실행 폴더에 복사하고, 전체 소스 ZIP·현재 설명서/점검표·서류 안내/확인된 원문 PDF·검증 근거·해시 매니페스트·ZIP 체크섬을 만듭니다. 기존 출력·실제 수집 자료·가상환경·이전 결과는 전달하지 않습니다.
+
+`ready_to_submit=false`와 미완료 서류·서명·별도 PC·접수/독립 검증 항목을 기록합니다. 제출 후보 생성과 실제 제출은 구분합니다. 자동 접수나 임의 개인정보/서명 작성은 하지 않습니다. 소스와 생성법은 BUILD_MANUAL, 남은 최종 확인은 SUBMISSION_CHECKLIST/OTHER_PC_CHECKLIST를 따릅니다.
+
+현재 파일의 보관/삭제 상태와 실제 접수 여부는project.md를 따릅니다. 패키지 생성법 설명이 새 제출 묶음의 존재나 접수를 의미하지 않습니다.
 
 <a id="future-roadmap"></a>
 
