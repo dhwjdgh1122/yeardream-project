@@ -151,13 +151,37 @@ async function run() {
   elements.collectionMode.value = 'browser';
   await elements.analyze.handlers.click();
   assert.deepEqual(JSON.parse(elements.output.textContent).warnings, response.warnings);
-  assert.equal(elements.warnings.children[0].textContent, response.warnings[0]);
+  assert.equal(elements.warnings.children[1].children[1].children[0].textContent, response.warnings[0]);
   assert.ok(elements.status.textContent.includes('일부 범위 미분석'));
   response.warnings = ['분석 이력을 저장하지 못했습니다. 현재 결과와 JSON 다운로드는 사용할 수 있습니다.'];
   await elements.analyze.handlers.click();
   assert.ok(!elements.status.textContent.includes('일부 범위 미분석'));
-  assert.equal(elements.warnings.children[0].textContent, response.warnings[0]);
+  assert.equal(elements.warnings.children[1].children[1].children[0].textContent, response.warnings[0]);
   assert.equal(elements.download.disabled, false);
+  // Hundreds of routine notices stay collapsed, while failures appear first.
+  response.warnings = Array.from({length: 500}, (_, i) =>
+    `HTML 수집 대상이 아닌 첨부 링크 제외: https://example.com/download?id=${i}`);
+  response.warnings.push('수집 실패: <img src=x onerror=alert(1)>',
+    '탐색이 중단돼 미분석 범위가 있습니다: max_pages', 'Unknown notice', 'Unknown notice');
+  await elements.analyze.handlers.click();
+  assert.equal(elements.warnings.children.length, 5); // Overview plus four groups.
+  assert.ok(elements.warnings.children[0].textContent.includes('504건'));
+  assert.ok(elements.warnings.children[1].children[0].textContent.includes('문서 수집 실패'));
+  assert.ok(elements.warnings.children[2].children[0].textContent.includes('문서 한도 도달'));
+  const attachments = elements.warnings.children[3];
+  assert.equal(attachments.tag, 'details');
+  assert.ok(!attachments.open);
+  assert.ok(attachments.children[0].textContent.includes('500건'));
+  assert.equal(attachments.children[1].children.length, 500);
+  assert.ok(elements.warnings.children[4].children[1].children[0].textContent.includes('동일 안내 2건'));
+  assert.deepEqual(JSON.parse(elements.output.textContent).warnings, response.warnings);
+  elements.downloadContent.handlers.click();
+  const groupedDownload = downloads.pop();
+  assert.deepEqual(JSON.parse(await groupedDownload.blob.text()).warnings, response.warnings);
+  cleanup.splice(0).forEach(callback => callback());
+  response.warnings = [];
+  await elements.analyze.handlers.click();
+  assert.equal(elements.warnings.children.length, 0);
   fail = true;
   await elements.analyze.handlers.click();
   assert.equal(elements.analyze.disabled, false);
