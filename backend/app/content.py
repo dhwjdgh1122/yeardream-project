@@ -9,7 +9,7 @@ from .textnorm import normalize_mapped
 from .detection import HOMOGLYPH_PATTERN, JAMO_PATTERN
 from .comparison import evaluation_url_key
 
-POLICY_VERSION = 'content-rules-v4'
+POLICY_VERSION = 'content-rules-v5'
 BLOCKS = {'body', 'main', 'article', 'section', 'aside', 'nav', 'header', 'footer',
           'div', 'p', 'li', 'td', 'th', 'blockquote', 'figcaption', 'pre',
           'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
@@ -17,16 +17,16 @@ EXCLUDED = {'head', 'script', 'style', 'template', 'noscript'}
 RULES = {
     'GAMBLING': (
         re.compile(r'토토(?:사이트|커뮤니티|베팅|배팅)|카지노|꽁머니|먹튀검증|메이저사이트|온라인도박|슬롯(?:체험|게임)|casino|mega-?bet'),
-        re.compile(r'신규가입|가입|보너스|첫충|바로가기|추천|홍보|환전|출금|고배당|signup|bonus|join|(?:상담)?텔레그램@[a-z0-9_]+|상담텔레그램'),
+        re.compile(r'신규가입|가입|보너스|첫충|바로가기|추천|홍보|환전|출금|고배당|구글검색|signup|bonus|join|(?:상담)?텔레그램@[a-z0-9_]+|상담텔레그램'),
     ),
     'ADULT_CONTENT': (
         re.compile(r'야동|성인(?:물|영상|사이트|방송)|음란(?:물|사이트)|19금(?:영상|사이트)'),
-        re.compile(r'무료시청|시청|무료|바로가기|접속|가입|추천|다운로드|고화질|플랫폼|스트리밍|무제한|빠른주소'),
+        re.compile(r'무료시청|시청|무료|바로가기|접속|가입|추천|다운로드|고화질|플랫폼|스트리밍|무제한|빠른주소|구글검색'),
     ),
 }
 PROTECTIVE = re.compile(
     r'예방교육|예방캠페인|피해예방|피해(?:상담|신고)|성교육|보도자료|검거|적발|수사결과|'
-    r'(?:가입|접속|이용|시청|다운로드).{0,18}(?:하지마|금지|주의|조심|위험)|'
+    r'(?:가입|접속|이용|시청|다운로드|검색).{0,18}(?:하지마|금지|주의|조심|위험)|'
     r'(?:도박|성인물|음란물|성폭력).{0,12}(?:예방|교육|근절)|차단(?:방법|안내)|'
     r'불법광고신고(?:안내|방법)|(?:광고|홍보).{0,8}(?:신고해|신고하|신고바|삭제요청)'
 )

@@ -297,7 +297,7 @@ def run():
                     report = json.loads(path.read_text(encoding='utf-8'))
                     assert report['candidates'] == content['content_candidates']
                     assert report['purpose'] == 'content_candidate_review'
-                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v4'
+                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v5'
                     download_json(content, 'content-four-technique-json')
                     analyze('missing', 502)
                     assert page.locator('#downloadContent').is_disabled()

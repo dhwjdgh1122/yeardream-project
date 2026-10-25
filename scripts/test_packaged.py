@@ -29,6 +29,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 });</script></body>''',
             '/clean': '<p>정상 안내</p>',
             '/chat': '<p>Google 강좌 수료 후 받은 우산 후기. 구글 직원인 줄 알려나? ㅋㅋ</p>',
+            '/search-ad': '<p>먹튀검증 구글검색 커뮤니티A</p>',
+            '/search-warning': '<p>토토사이트 구글검색을 하지 마세요.</p>',
         }
         self.send_response(200 if self.path in documents else 500)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -157,6 +159,13 @@ def run():
                     chat = request_json(base + '/api/analyze', {'url': fixture_base + '/chat', 'max_depth': 0})
                     assert chat['findings'] == [] and chat['content_candidates'] == []
                     check_files(bundle, chat)
+                    search = request_json(base + '/api/analyze', {'url': fixture_base + '/search-ad', 'max_depth': 0})
+                    assert len(search['content_candidates']) == 1
+                    assert search['content_policy_version'] == 'content-rules-v5'
+                    assert search['result_json']['findings'] == []
+                    check_files(bundle, search)
+                    warning = request_json(base + '/api/analyze', {'url': fixture_base + '/search-warning', 'max_depth': 0})
+                    assert warning['content_candidates'] == []
                     clean = request_json(base + '/api/analyze', {'url': fixture_base + '/clean', 'max_depth': 0})
                     assert clean['result_json']['findings'] == clean['result_extra_json']['findings'] == []
                     check_files(bundle, clean)
@@ -179,7 +188,7 @@ def run():
         'checks': ['bundle hashes', 'Korean/spaced path', 'unrelated cwd', 'Python removed from PATH',
                    'health/UI/OpenAPI', 'port collision', 'static selection', 'failure preserves files',
                    'packaged Edge JS/computed CSS', 'readable cards/collapsed JSON', 'no uncalibrated confidence',
-                   'chat laughter excluded', 'UI downloads', 'empty results', 'output beside exe'],
+                   'chat laughter excluded', 'search promotion vs prohibition', 'UI downloads', 'empty results', 'output beside exe'],
     }
     if args.report:
         with args.report.open('x', encoding='utf-8') as stream:
