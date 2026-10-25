@@ -1,5 +1,11 @@
 # 공공 웹사이트 불법광고 탐지 도구 — 설계·규격
 
+### 저장본 제출 검토 구현
+
+`backend/app/review.py`와 `scripts/review_submission.py`는 자동 API 정책과 독립적인 오프라인 검토·내보내기를 제공합니다. `submission-review.json`은 capture SHA-256과 검출된 각 특징의 URL/location/technique/원문에 연결됩니다. 최초 판단은 모두 pending입니다. include/exclude에는 검토자·이유·시간대 있는 검토 시각이 필수입니다. 저장 HTML 해시·요소 단일 재식별·원문 일치·전체 검출 목록 보존·선택자 별칭 중복을 검증한 뒤 include만 명시적 true로 Result Builder에 전달합니다. pending/exclude를 false로 변환하지 않습니다.
+
+새 출력 폴더의 result.json과 함께 정확한 검토 원본 사본 및 review-audit.json(수집/검토/결과/현재 코드 해시, 자동 평가, 포함·제외·미검토 수)을 보존합니다. 해시는 변조 확인용이며 전자서명이나 쓰기 방지는 아닙니다. 검토 완료는 재현된 검출 목록에만 한정됩니다. 기존 content-labels.json의 내용 정답·법적 판단 메모를 자동 전환하지 않으며 특징/내용 정확도 지표도 변경하지 않습니다. 검토 UI·검출 누락 요소 추가·내용 후보 검토·디스크 오류 시 여러 파일의 트랜잭션 보장은 아직 없습니다. 실행법은 README를 따릅니다.
+
 ## 1. 문서 역할과 목표
 
 공통 목표는 URL에서 시작해 하위 페이지·게시글·댓글·iframe·중첩 iframe을 탐색하고 HOMOGLYPH·JAMO·TRANSPARENT·OFFSCREEN을 탐지하여 정확한 위치·근거·result.json·결과 UI를 제공하는 것입니다.

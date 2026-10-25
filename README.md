@@ -4,6 +4,24 @@ URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe�
 
 사용자 1명이 구현·탐지 기준·데이터 구성·정확도 검증을 모두 담당하며 코딩 에이전트가 이를 돕습니다.
 
+### 저장본의 제출 후보 수동 검토
+
+자동 규칙이 놓친 특징을 검토한 뒤 포함하거나, 자동 선택된 특징을 제외할 수 있습니다. 먼저 아래 capture 명령으로 저장본을 만들고, 해당 RUN 폴더에서 검토를 시작합니다. 실제 UI에는 아직 검토 버튼이 없습니다.
+
+```powershell
+.venv\Scripts\python.exe -B scripts/review_submission.py init .validation/RUN
+```
+
+생성된 `submission-review.json`의 `items`를 편집합니다. 모든 항목의 최초 `decision`은 `pending`이며 자동 선택을 사람의 승인으로 취급하지 않습니다. 실제로 검토한 항목만 `include`(제출 포함) 또는 `exclude`(제출 제외)로 바꾸고, `reviewer`·`reason`·시간대가 있는 ISO 8601 `reviewed_at`을 기록합니다. 예: `2026-10-25T15:00:00+09:00`. `source_text`와 `capture_sha256`는 변경하지 않습니다.
+
+```powershell
+.venv\Scripts\python.exe -B scripts/review_submission.py export .validation/RUN --output .validation/RUN-reviewed-01
+```
+
+새 폴더에 포함 결정만 담은 `result.json`, 검토 파일의 원본 사본, 해시·건수·자동 평가·코드 해시를 담은 `review-audit.json`이 생성됩니다. `pending`과 `exclude`는 결과에서 빠지며 정상(false)으로 단정하지 않습니다. 부분 검토도 내보낼 수 있지만 감사 기록의 `review_complete`는 false입니다. 이 완료 값은 **검출된 특징 목록**에 대한 검토만 뜻하며 전체 사이트 검수·정확도·법적 확정을 뜻하지 않습니다. 일반 홍보 내용에 임의의 4종 기법을 붙이거나 탐지되지 않은 요소를 추가하는 기능은 없습니다.
+
+기존 검토·출력 폴더를 덮어쓰지 않습니다. `Review failed`가 나오면 원문/요소·항목 누락·검토 근거·시간대·기존 출력 경로를 확인합니다. 코드 변경으로 검출 목록이 달라지면 이전 검토를 자동 이식하지 말고 새 capture에서 다시 검토합니다. 원본 수집·정답·자동 API 결과·루트 결과 파일은 유지됩니다. 내보내기는 추가 유형 파일을 재생성하지 않습니다. 저장 중 디스크 오류가 나면 불완전한 출력 폴더가 남을 수 있으므로 오류를 해결하고 새 경로로 다시 실행합니다.
+
 출력 위치 안내(현재 소스 실행 기준): **이 README가 있는 프로젝트 루트**에 `result.json`(필수 4종)과 `result_extra.json`(추가 홍보 후보)을 생성합니다. 터미널 작업 폴더와 무관하게 코드 위치를 기준으로 저장합니다. 화면 다운로드는 사용자 다운로드 폴더에 복사본을 저장합니다. 배포 구동 파일을 만들 때도 사용설명서 첫 장에 두 파일의 실제 생성 경로를 명시해야 합니다(PDF 5·9쪽).
 
 ## 문서 안내
