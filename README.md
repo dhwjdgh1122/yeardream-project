@@ -118,3 +118,33 @@ node --preserve-symlinks-main --preserve-symlinks scripts/test_frontend.cjs
 로컬 임시 서버를 열어 표·특수문자 ID·반복/중첩 iframe·srcdoc 위치, UI 필터·부분 결과·실패 복구·정상 0건을 검사합니다. JS 생성 본문·fetch 댓글·링크·프레임의 기본 분석 0건과 동적 분석 11건, 위치·파일 일치·502/504 파일 보존도 확인합니다. 실제 다운로드의 파일명·UTF-8·API 결과 일치·필터 독립성·부분/빈 결과·화면별 결과 보존을 확인합니다. 결과는 임시 디렉터리로 격리하고 서버와 브라우저를 종료합니다. 외부 사이트 정확도 검사와는 별도입니다.
 
 2026-10-25 재현 환경은 Python 3.14.6·pip 26.1.2·Edge 156.0.4314.42·Node 20.12.2입니다. Edge는 별도 설치 앱이므로 버전이 바뀌면 브라우저 검사를 다시 확인합니다. 버전 변경 시 격리 환경의 설치·pip check·Python·Node·브라우저·기동 검증을 마친 뒤 requirements와 constraints를 함께 갱신합니다.
+
+## 사이트 수집·정답 비교
+
+검증할 실제 URL과 판정 기준을 정한 뒤 실행합니다. 다음 도구는 **4종 특징 탐지**를 평가하며 불법광고 여부의 정확도를 확정하지 않습니다.
+
+```powershell
+$targetUrl = Read-Host "검증할 공개 페이지 URL"
+.\.venv\Scripts\python.exe -B scripts/validate_site.py capture $targetUrl --output .validation/run-001 --mode static --max-depth 0
+.\.venv\Scripts\python.exe -B scripts/validate_site.py evaluate .validation/run-001
+```
+
+동적 페이지에는 `--mode browser`를 사용합니다. 기본 한도는 링크 깊이 0·문서 컨텍스트 8·프레임 깊이 3·공유 시간 60초입니다. `--max-depth`, `--total-timeout-sec`, `--render-wait-ms`로 범위를 조정할 수 있습니다. 기존 폴더는 덮어쓰지 않으므로 새 수집에는 다른 run 이름을 사용합니다. 전체 수집 실패는 종료 코드 2이며 정상 0건으로 취급하지 않습니다.
+
+수집 폴더에는 HTML, 입력·수집 시각·프레임 경로·해시·탐지 후보·제외/실패 사유를 담은 capture.json, 검수용 labels.json이 생깁니다. `.validation/`은 Git에서 제외됩니다. 앱의 result.json을 변경하지 않습니다.
+
+labels.json은 초기에는 `complete: false`, 각 후보는 `expected: null`, `reviewed: false`입니다. 후보뿐 아니라 놓친 요소와 정상 사례도 저장된 문서에서 찾아 수동으로 추가합니다.
+
+| 필드 | 검수 방법 |
+|---|---|
+| policy | 적용한 특징·정상 예외 기준과 버전을 기록 |
+| url / location / technique | 저장된 문서의 최상위 URL·요소/프레임 경로·4종 유형 지정 |
+| expected | 해당 기준의 특징이면 true, 정상이면 false, 판단 전은 null |
+| reviewed / reason | 실제 검수 후 true와 판단 근거 기록 |
+| complete | 저장된 문서 전체의 4종 양성 요소를 빠짐없이 검수한 경우에만 true |
+
+capture_sha256는 해당 수집과 정답의 연결 값이므로 유지합니다. 검수 중에는 metrics가 null이며 미검토 탐지를 오탐으로 세지 않습니다. 모든 항목 검수와 policy 기록 후 complete를 true로 바꾸고 evaluate를 다시 실행하면 report.json에 TP·FP·FN·명시적 정상 TN과 유형별 precision·recall·F1을 기록합니다. 전체 검수에서는 정답 양성 목록 밖의 탐지가 FP입니다. 분모가 없는 지표는 null입니다.
+
+평가는 **저장에 성공한 문서 범위**에 한정합니다. report.json의 수집 경고와 미검토 수를 함께 확인합니다. 수집에서 빠진 페이지·화면 밖 리소스·광고 위반 판정 전체를 이 점수로 평가하지 않습니다. HTML 해시 불일치·다른 수집의 정답·중복/잘못된 요소 경로는 거부합니다. evaluate는 저장된 HTML만 읽으며 재접속하지 않습니다.
+
+2026-10-25 실제 사이트 점검에서 광주 교육청 어린이 게시판의 [도박 홍보성 게시물](https://gen.go.kr/child/xboard/board.php?mode=view&number=107&tbnum=6)과 [성인물 홍보성 게시물](https://gen.go.kr/child/xboard/board.php?mode=view&number=151&tbnum=6)에 분석 API가 0건을 반환하는 한계를 확인했습니다. 현재 4종 위장/은닉 특징만으로는 일반 표시 광고의 내용을 탐지하지 못합니다. 0건을 광고가 없는 페이지로 해석하지 않으며, 구체적인 근거·수집 범위는 project.md 19절을 참조합니다.
