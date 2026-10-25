@@ -78,6 +78,7 @@ def run():
             working = directory / 'unrelated working directory'
             working.mkdir()
             environment = os.environ.copy()
+            environment['LOCALAPPDATA'] = str(directory / 'local-app-data')
             for key in ('PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV'):
                 environment.pop(key, None)
             environment['PATH'] = str(Path(os.environ['SystemRoot']) / 'System32')
@@ -154,6 +155,21 @@ def run():
                                 with page.expect_download() as download:
                                     page.locator(button).click()
                                 assert json.loads(Path(download.value.path()).read_bytes()) == dynamic[key]
+                            assert dynamic['analysis_id']
+                            page.goto(base + '/history')
+                            page.get_by_role('button', name=fixture_base + '/dynamic', exact=True).first.click()
+                            form = page.locator('#detail form').first
+                            form.get_by_label('검토 결과').select_option('uncertain')
+                            form.get_by_label('검토자').fill('Packaged fixture reviewer')
+                            form.get_by_label('판단 이유').fill('Packaged local review check')
+                            form.get_by_role('button', name='검토 기록 추가').click()
+                            page.get_by_text('저장했습니다. 기존 분석·제출 결과는 유지됩니다.').wait_for()
+                            page.reload()
+                            page.get_by_role('button', name=fixture_base + '/dynamic', exact=True).first.click()
+                            page.get_by_text('Packaged local review check', exact=False).wait_for()
+                            check_files(bundle, dynamic)
+                            assert (directory / 'local-app-data' / 'YearDream' / 'history.sqlite3').is_file()
+                            assert not (bundle / 'history.sqlite3').exists()
                         finally:
                             browser.close()
                     chat = request_json(base + '/api/analyze', {'url': fixture_base + '/chat', 'max_depth': 0})
@@ -188,7 +204,8 @@ def run():
         'checks': ['bundle hashes', 'Korean/spaced path', 'unrelated cwd', 'Python removed from PATH',
                    'health/UI/OpenAPI', 'port collision', 'static selection', 'failure preserves files',
                    'packaged Edge JS/computed CSS', 'readable cards/collapsed JSON', 'no uncalibrated confidence',
-                   'chat laughter excluded', 'search promotion vs prohibition', 'UI downloads', 'empty results', 'output beside exe'],
+                   'chat laughter excluded', 'search promotion vs prohibition', 'UI downloads', 'empty results', 'output beside exe',
+                   'isolated SQLite history', 'packaged review UI persistence', 'review preserves result JSON'],
     }
     if args.report:
         with args.report.open('x', encoding='utf-8') as stream:

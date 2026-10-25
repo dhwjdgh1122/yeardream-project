@@ -117,8 +117,10 @@ def run():
     server = uvicorn.Server(uvicorn.Config(fixture_app, log_level='error', lifespan='off'))
     thread = threading.Thread(target=server.run, kwargs={'sockets': [sock]}, daemon=True)
     original_result_path = main.result_path
+    original_history_path = main.history_path
     with tempfile.TemporaryDirectory(prefix='yeardream-browser-') as temporary:
         main.result_path = Path(temporary) / 'result.json'
+        main.history_path = Path(temporary) / 'history.sqlite3'
         try:
             thread.start()
             limit = time.monotonic() + 10
@@ -403,6 +405,7 @@ def run():
             thread.join(timeout=10)
             sock.close()
             main.result_path = original_result_path
+            main.history_path = original_history_path
             if thread.is_alive():
                 raise RuntimeError('Local test server did not stop')
 

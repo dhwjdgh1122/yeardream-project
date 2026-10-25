@@ -82,6 +82,7 @@
     <div class="container">
       <div class="card">
         <h1>불법광고 탐지 도구</h1>
+        <p><a href="/history">분석 이력·후보 검토 관리</a></p>
         <div class="row">
           <input id="url" type="text" value="https://example.com" style="flex: 1;" />
           <select id="collectionMode" aria-label="분석 방식">
@@ -264,7 +265,8 @@
           downloadButton.disabled = !data.result_json;
           downloadContentButton.disabled = false;
           downloadExtraButton.disabled = !data.result_extra_json;
-          const completion = data.warnings?.length ? '분석 완료(일부 범위 미분석)' : '분석 완료';
+          const partial = (data.warnings || []).some(warning => !warning.startsWith('분석 이력을 저장하지 못했습니다.'));
+          const completion = partial ? '분석 완료(일부 범위 미분석)' : '분석 완료';
           status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개, 4종 제출 후보 ${(data.result_json?.findings || []).length}개`;
         } catch (error) {
           clearResults(`분석 실패: ${error.message}`);

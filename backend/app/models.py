@@ -44,6 +44,7 @@ class ContentCandidate(BaseModel):
 
 
 class AnalysisResponse(BaseModel):
+    analysis_id: Optional[str] = None
     url: str
     collection_mode: Literal['static', 'browser'] = 'static'
     page_title: Optional[str] = None
@@ -55,3 +56,9 @@ class AnalysisResponse(BaseModel):
     result_json: Dict[str, Any]
     result_extra_json: Dict[str, Any] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
+
+
+class ReviewRequest(BaseModel):
+    decision: Literal['promotion', 'normal', 'uncertain']
+    reviewer: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=1, max_length=2000)

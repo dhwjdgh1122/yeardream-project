@@ -1,27 +1,30 @@
 import json
+import sqlite3
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .crawler import crawl_site
 from .detection import detect_page
 from .result import build_extra_result_json, build_result_json
-from .models import AnalyzeRequest, AnalysisResponse, Finding
+from .models import AnalyzeRequest, AnalysisResponse, Finding, ReviewRequest
 from .limits import AnalysisTimeout, Deadline
 from .browser import BrowserRenderer, BrowserUnavailable
 from .content import POLICY_VERSION, detect_content
 from .policy import POLICY_VERSION as SUBMISSION_POLICY_VERSION, assess_findings
-from .paths import output_root, resource_root
+from .paths import output_root, resource_root, history_database_path
+from .history import HistoryStore
 
 app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Local review records are only exposed to the bundled same-origin UI.
+    allow_origins=[],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -29,6 +32,7 @@ app.add_middleware(
 project_root = resource_root()
 frontend_dir = project_root / "frontend" / "static"
 result_path = output_root() / "result.json"
+history_path = history_database_path()
 
 
 @app.get("/api/health")
@@ -118,7 +122,7 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             json.dumps(result_extra_json, ensure_ascii=False, indent=2), encoding='utf-8')
 
         page_title = successful_pages[0].get("title")
-        return AnalysisResponse(
+        response = AnalysisResponse(
             url=payload.url,
             collection_mode=payload.collection_mode,
             page_title=str(page_title) if page_title else None,
@@ -131,6 +135,12 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             result_extra_json=result_extra_json,
             warnings=list(dict.fromkeys(warnings)),
         )
+        try:
+            response.analysis_id = HistoryStore(history_path).save(
+                payload.model_dump(), response.model_dump(exclude={'analysis_id'}))
+        except (OSError, sqlite3.Error):
+            response.warnings.append('분석 이력을 저장하지 못했습니다. 현재 결과와 JSON 다운로드는 사용할 수 있습니다.')
+        return response
     except HTTPException:
         raise
     except BrowserUnavailable as exc:
@@ -139,6 +149,40 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
         raise HTTPException(status_code=504, detail="분석 시간 제한에 도달했습니다.") from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def history_call(method, *args):
+    try:
+        return getattr(HistoryStore(history_path), method)(*args)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail='이력 또는 후보를 찾을 수 없습니다.') from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail='이력 저장소를 사용할 수 없습니다.') from exc
+
+
+@app.get('/api/history')
+def list_history(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+    return history_call('list', limit, offset)
+
+
+@app.get('/api/history/{analysis_id}')
+def get_history(analysis_id: str):
+    return history_call('get', analysis_id)
+
+
+@app.post('/api/history/{analysis_id}/candidates/{candidate_id}/reviews')
+def save_review(analysis_id: str, candidate_id: str, payload: ReviewRequest):
+    record = payload.model_dump()
+    for key in ('reviewer', 'reason'):
+        record[key] = record[key].strip()
+        if not record[key]:
+            raise HTTPException(status_code=422, detail='검토자와 이유를 입력해 주세요.')
+    return history_call('review', analysis_id, candidate_id, record)
+
+
+@app.get('/history')
+def serve_history() -> FileResponse:
+    return FileResponse(frontend_dir / 'history.html')
 
 
 @app.get("/")

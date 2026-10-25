@@ -128,6 +128,12 @@ async function run() {
   await elements.analyze.handlers.click();
   assert.deepEqual(JSON.parse(elements.output.textContent).warnings, response.warnings);
   assert.equal(elements.warnings.children[0].textContent, response.warnings[0]);
+  assert.ok(elements.status.textContent.includes('일부 범위 미분석'));
+  response.warnings = ['분석 이력을 저장하지 못했습니다. 현재 결과와 JSON 다운로드는 사용할 수 있습니다.'];
+  await elements.analyze.handlers.click();
+  assert.ok(!elements.status.textContent.includes('일부 범위 미분석'));
+  assert.equal(elements.warnings.children[0].textContent, response.warnings[0]);
+  assert.equal(elements.download.disabled, false);
   fail = true;
   await elements.analyze.handlers.click();
   assert.equal(elements.analyze.disabled, false);

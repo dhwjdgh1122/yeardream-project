@@ -1,5 +1,18 @@
 # 공공 웹사이트 불법광고 탐지 도구 — 설계·규격
 
+### 로컬 플랫폼 1단계: 분석 이력·검토
+
+`history.py`는 표준 라이브러리 sqlite3를 사용하며 analyses(요청/응답 원본 JSON·SHA-256·저장 시각), candidates(분석별 feature/content 후보 사본), reviews(후보에 대한 검토 변경 이력)를 저장합니다. UUID 분석 ID와 분석 안에서의 feature-N/content-N ID로 연결하며 다른 분석의 ID와 결합해 기록하지 않습니다. 후보 ID는 분석 사이의 동일 요소 식별자가 아닙니다. 저장 트랜잭션·외래키·스키마 user_version=1을 사용하며 알 수 없는 미래 버전은 거부합니다. 응답 해시는 저장 오류 확인용이며 전자서명이나 DB 변조 방지 기능은 아닙니다.
+
+- `GET /api/history?limit=20&offset=0`: 최근 저장 순 목록, 전체 건수. limit 1~100, offset 0 이상.
+- `GET /api/history/{analysis_id}`: 보관된 분석/요청, 후보별 전체 검토 기록.
+- `POST /api/history/{analysis_id}/candidates/{candidate_id}/reviews`: decision=promotion/normal/uncertain, 공백 제외 reviewer(최대 100자)·reason(최대 2000자), 서버 UTC 시각. 이전 기록을 지우지 않습니다.
+- `GET /history`: 목록·페이지 이동·원문/위치·검토 기록/입력 화면. 원문은 textContent로 표시합니다.
+
+분석 응답에 nullable analysis_id를 추가하며 제출 JSON에는 넣지 않습니다. 기존 JSON 생성 후 이력을 저장하고 DB 실패 시 analysis_id=null과 경고를 반환합니다. DB 오류 조회/검토는 503, 없는 분석/후보는 404입니다. 전부 실패한 분석은 보관하지 않으며 부분 분석의 수집 경고는 보존합니다. requests/응답에 있는 규칙 버전을 보관하지만 HTML 전체·페이지별 DOM snapshot은 저장하지 않습니다. 후보가 없는 문서의 개별 원문 검수나 수집 재현은 기존 오프라인 capture 도구를 사용합니다. 기존 수동 제출 검토 CLI와 이 화면의 내용 분류 기록은 별개입니다.
+
+DB는 프로젝트/배포 폴더 대신 로컬 사용자 데이터 경로에 둡니다. Windows는 LOCALAPPDATA/YearDream/history.sqlite3, 그 외는 ~/.local/share/YearDream/history.sqlite3입니다. 앱은 로컬 단일 사용자 운용을 전제로 하며 CORS 허용 출처는 비어 있습니다. 여러 사용자가 접속하는 서버로 배포하려면 인증·권한·운영 설계를 별도로 마련합니다. 현재 SQLite 외 별도 서버/벡터 DB/AI 모델 의존성은 없습니다.
+
 ### 제출 후보 패키지
 
 `scripts/package_submission.py`는 깨끗한 Git 작업 트리의 추적 소스/문서와 검사된 Windows 폴더를 새 제출 후보로 묶습니다. 빌드 매니페스트·파일 해시·passed 검사 보고서·exe 해시를 검증하고 기록된 분석 빌드 입력 및 새 backend/frontend 런타임 파일이 현재 소스와 일치하는지 확인합니다. 명시된 오프라인 평가/검수 모듈의 변경은 별도 기록합니다. 검증된 파일만 실행 폴더에 복사하고, 전체 소스 ZIP·현재 설명서/점검표·서류 안내/확인된 원문 PDF·검증 근거·해시 매니페스트·ZIP 체크섬을 만듭니다. 기존 출력·실제 수집 자료·가상환경·이전 결과는 전달하지 않습니다.

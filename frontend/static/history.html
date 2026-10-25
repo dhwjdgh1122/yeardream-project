@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>분석 이력·후보 검토 — YearDream</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f7fb; color: #1f2937; margin: 0; }
+    main { max-width: 900px; margin: 24px auto; padding: 20px; background: white; border-radius: 12px; }
+    article { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    p, pre, button { overflow-wrap: anywhere; }
+    pre { white-space: pre-wrap; background: #f3f4f6; padding: 12px; max-height: 240px; overflow: auto; }
+    button, input, select, textarea { padding: 10px; margin: 4px 0; font: inherit; max-width: 100%; box-sizing: border-box; }
+    button { cursor: pointer; }
+    button:disabled { cursor: default; opacity: .5; }
+    label { display: block; margin-top: 10px; }
+    textarea { width: 100%; min-height: 80px; }
+    #message { color: #92400e; }
+    @media (max-width: 600px) { main { margin: 8px; padding: 14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <a href="/">탐지 화면으로</a>
+  <h1>분석 이력·후보 검토</h1>
+  <p>이 PC에 저장된 분석을 확인합니다. 검토 기록은 내용 분류를 위한 참고이며 법적 판단이나 제출 승인에 해당하지 않습니다. 기존 제출 JSON은 변경하지 않습니다.</p>
+  <button id="refresh">이력 새로고침</button>
+  <p id="message" role="status"></p>
+  <div id="history"></div>
+  <button id="previous">이전</button> <button id="next">다음</button>
+  <section id="detail" aria-label="선택한 분석 상세"></section>
+</main>
+<script>
+  const list = document.getElementById('history');
+  const detail = document.getElementById('detail');
+  const message = document.getElementById('message');
+  let offset = 0;
+  let listVersion = 0;
+  let detailVersion = 0;
+  const decisions = { promotion: '홍보 내용 확인', normal: '정상 내용으로 검토', uncertain: '판단 보류' };
+
+  function text(parent, tag, value) {
+    const node = document.createElement(tag);
+    node.textContent = value;
+    parent.appendChild(node);
+    return node;
+  }
+
+  async function api(path, options) {
+    const response = await fetch(path, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '요청을 처리하지 못했습니다.');
+    return data;
+  }
+
+  async function loadHistory() {
+    const version = ++listVersion;
+    list.replaceChildren();
+    document.getElementById('previous').disabled = true;
+    document.getElementById('next').disabled = true;
+    message.textContent = '이력을 불러오는 중입니다.';
+    try {
+      const data = await api(`/api/history?limit=20&offset=${offset}`);
+      if (version !== listVersion) return;
+      message.textContent = `저장된 분석 ${data.total}건 · ${offset + 1}번부터 표시`;
+      if (!data.total) message.textContent = '저장된 분석이 없습니다. 탐지 화면에서 먼저 분석해 주세요.';
+      for (const item of data.items) {
+        const card = text(list, 'article', '');
+        text(card, 'p', `${item.saved_at} · ${item.collection_mode === 'browser' ? '동적 페이지 분석' : '기본 분석'} · 후보 ${item.candidate_count}개`);
+        const button = text(card, 'button', item.url);
+        button.addEventListener('click', () => loadDetail(item.id));
+      }
+      document.getElementById('previous').disabled = offset === 0;
+      document.getElementById('next').disabled = offset + 20 >= data.total;
+    } catch (error) {
+      if (version === listVersion) message.textContent = error.message;
+    }
+  }
+
+  function field(form, caption, tag, name) {
+    const label = text(form, 'label', caption);
+    const control = text(label, tag, '');
+    control.name = name;
+    control.required = true;
+    return control;
+  }
+
+  async function loadDetail(id) {
+    const version = ++detailVersion;
+    detail.replaceChildren();
+    const detailStatus = text(detail, 'p', '분석 상세를 불러오는 중입니다.');
+    detailStatus.setAttribute('role', 'status');
+    try {
+      const data = await api(`/api/history/${encodeURIComponent(id)}`);
+      if (version !== detailVersion) return;
+      detail.replaceChildren();
+      text(detail, 'h2', data.analysis.url);
+      text(detail, 'p', `저장 시각: ${data.saved_at}`);
+      text(detail, 'p', `내용 규칙: ${data.analysis.content_policy_version} / 제출 정책: ${data.analysis.submission_policy_version}`);
+      for (const warning of data.analysis.warnings || []) text(detail, 'p', warning);
+      if (!data.candidates.length) text(detail, 'p', '저장된 후보가 없습니다. 광고 부재를 확정하는 결과는 아닙니다.');
+      for (const candidate of data.candidates) {
+        const item = candidate.item;
+        const card = text(detail, 'article', '');
+        text(card, 'h3', `${candidate.kind === 'feature' ? '위장·은닉 특징' : '홍보 내용 후보'} · ${item.technique || item.category}`);
+        text(card, 'pre', item.source_text || item.evidence || '');
+        text(card, 'p', `페이지: ${item.url} / 위치: ${item.location}`);
+        if (item.submission_reason) text(card, 'p', `자동 판별 참고: ${item.submission_reason}`);
+        const log = text(card, 'div', '');
+        function appendReview(review) {
+          text(log, 'p', `${review.reviewed_at} · ${review.reviewer} · ${decisions[review.decision]} · ${review.reason}`);
+        }
+        if (!candidate.reviews.length) text(log, 'p', '사람의 검토 기록 없음');
+        candidate.reviews.forEach(appendReview);
+        const form = text(card, 'form', '');
+        const decision = field(form, '검토 결과', 'select', 'decision');
+        const placeholder = text(decision, 'option', '선택해 주세요');
+        placeholder.value = '';
+        for (const [value, caption] of Object.entries(decisions)) text(decision, 'option', caption).value = value;
+        const reviewer = field(form, '검토자', 'input', 'reviewer');
+        reviewer.maxLength = 100;
+        const reason = field(form, '판단 이유', 'textarea', 'reason');
+        reason.maxLength = 2000;
+        const save = text(form, 'button', '검토 기록 추가');
+        save.type = 'submit';
+        const feedback = text(form, 'p', '');
+        feedback.setAttribute('role', 'status');
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (save.disabled) return;
+          save.disabled = true;
+          feedback.textContent = '저장 중입니다.';
+          try {
+            const review = await api(`/api/history/${encodeURIComponent(id)}/candidates/${encodeURIComponent(candidate.id)}/reviews`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ decision: decision.value, reviewer: reviewer.value, reason: reason.value })
+            });
+            if (!candidate.reviews.length) log.replaceChildren();
+            candidate.reviews.push(review);
+            appendReview(review);
+            feedback.textContent = '저장했습니다. 기존 분석·제출 결과는 유지됩니다.';
+          } catch (error) { feedback.textContent = error.message; }
+          finally { save.disabled = false; }
+        });
+      }
+    } catch (error) {
+      if (version === detailVersion) detailStatus.textContent = error.message;
+    }
+  }
+
+  document.getElementById('refresh').addEventListener('click', () => { offset = 0; loadHistory(); });
+  document.getElementById('previous').addEventListener('click', () => { offset = Math.max(0, offset - 20); loadHistory(); });
+  document.getElementById('next').addEventListener('click', () => { offset += 20; loadHistory(); });
+  loadHistory();
+</script>
+</body>
+</html>

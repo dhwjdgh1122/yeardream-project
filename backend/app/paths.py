@@ -1,7 +1,14 @@
 """Keep bundled read-only assets separate from user-visible result files."""
 
 import sys
+import os
 from pathlib import Path
+
+
+def history_database_path():
+    """Keep mutable history outside the application and synchronized source tree."""
+    base = Path(os.environ['LOCALAPPDATA']) if os.environ.get('LOCALAPPDATA') else Path.home() / '.local' / 'share'
+    return base / 'YearDream' / 'history.sqlite3'
 
 
 def resource_root():
