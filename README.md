@@ -22,7 +22,19 @@ URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe�
 
 기존 검토·출력 폴더를 덮어쓰지 않습니다. `Review failed`가 나오면 원문/요소·항목 누락·검토 근거·시간대·기존 출력 경로를 확인합니다. 코드 변경으로 검출 목록이 달라지면 이전 검토를 자동 이식하지 말고 새 capture에서 다시 검토합니다. 원본 수집·정답·자동 API 결과·루트 결과 파일은 유지됩니다. 내보내기는 추가 유형 파일을 재생성하지 않습니다. 저장 중 디스크 오류가 나면 불완전한 출력 폴더가 남을 수 있으므로 오류를 해결하고 새 경로로 다시 실행합니다.
 
-출력 위치 안내(현재 소스 실행 기준): **이 README가 있는 프로젝트 루트**에 `result.json`(필수 4종)과 `result_extra.json`(추가 홍보 후보)을 생성합니다. 터미널 작업 폴더와 무관하게 코드 위치를 기준으로 저장합니다. 화면 다운로드는 사용자 다운로드 폴더에 복사본을 저장합니다. 배포 구동 파일을 만들 때도 사용설명서 첫 장에 두 파일의 실제 생성 경로를 명시해야 합니다(PDF 5·9쪽).
+출력 위치 안내: **소스 실행은 이 README가 있는 프로젝트 루트, Windows 배포본은 YearDream.exe 옆**에 `result.json`(필수 4종)과 `result_extra.json`(추가 홍보 후보)을 생성합니다. 터미널 작업 폴더와 무관합니다. 화면 다운로드는 사용자 다운로드 폴더에 사본을 저장합니다. [사용자 설명서](docs/USER_MANUAL.md) 첫 부분에도 생성 경로를 명시했습니다(PDF 5·9쪽).
+
+## Windows 실행 파일
+
+Python 없이 실행할 수 있는 폴더형 패키지를 빌드합니다. 빌드 결과는 Git에 포함하지 않으며 로컬 dist 폴더에 생성합니다. 배포 ZIP 전체를 압축 해제한 후 YearDream.exe를 실행하면 로컬 서버와 브라우저 화면이 열립니다. 동적 분석에는 대상 PC의 Microsoft Edge가 필요합니다.
+
+```powershell
+.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-build.txt
+.venv\Scripts\python.exe -B scripts/build_windows.py --output dist/release-01
+.venv\Scripts\python.exe -B scripts/test_packaged.py dist/release-01/YearDream
+```
+
+이전 빌드를 덮어쓰지 않도록 새 출력 경로를 지정합니다. ZIP 경로는 `dist/release-01/YearDream-windows-x64.zip`입니다. [빌드 설명서](docs/BUILD_MANUAL.md)와 [사용자 설명서](docs/USER_MANUAL.md)를 참조합니다. 소스에서 같은 시작 프로그램을 사용하려면 `.venv\Scripts\python.exe -B run_app.py`로 실행합니다. 별도 Windows PC의 독립 실행 검증과 실제 사이트 정확도 측정은 남아 있습니다.
 
 ## 문서 안내
 

@@ -6,3 +6,5 @@ venv/
 .env
 .validation/
 .DS_Store
+build/
+dist/

@@ -1,7 +1,6 @@
 import json
 from contextlib import nullcontext
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException
@@ -16,6 +15,7 @@ from .limits import AnalysisTimeout, Deadline
 from .browser import BrowserRenderer, BrowserUnavailable
 from .content import POLICY_VERSION, detect_content
 from .policy import POLICY_VERSION as SUBMISSION_POLICY_VERSION, assess_findings
+from .paths import output_root, resource_root
 
 app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
 
@@ -26,9 +26,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-project_root = Path(__file__).resolve().parents[2]
+project_root = resource_root()
 frontend_dir = project_root / "frontend" / "static"
-result_path = project_root / "result.json"
+result_path = output_root() / "result.json"
 
 
 @app.get("/api/health")

@@ -1,5 +1,11 @@
 # 공공 웹사이트 불법광고 탐지 도구 — 설계·규격
 
+### Windows 배포 구조
+
+`run_app.py`는 소스/Windows 실행 파일 공통 진입점입니다. 쓰기 가능한 결과 경로를 확인하고 127.0.0.1 소켓을 먼저 확보한 다음 단일 Uvicorn 서버를 실행합니다. 서버 준비 후 기본 브라우저를 열며 `--no-browser`로 생략할 수 있습니다. 기본 포트 8000, `--port`로 변경하며 0이면 자동 선택합니다. GPU·외부 AI API는 필요하지 않습니다.
+
+`backend/app/paths.py`는 frontend/static 리소스의 번들 경로와 출력 경로를 구분합니다. 소스 실행은 프로젝트 루트, PyInstaller frozen 실행은 sys.executable의 부모 폴더에 결과 두 파일을 저장합니다. rendered_snapshot.js는 기존 browser.py 옆에 포함합니다. PyInstaller 6.22.3의 onedir 방식으로 Playwright 드라이버와 Python 런타임을 포함하고 설치된 Edge를 사용합니다. 빌드 스크립트는 새 출력 폴더·ZIP·소스/배포 해시 매니페스트·설명서 사본을 만듭니다. 기존 결과·실제 캡처·가상환경은 배포하지 않습니다. 코드 서명·설치 프로그램·자동 업데이트·독립 PC 검증은 범위 밖/미완료입니다. 실행/빌드 방법과 결과 경로는 docs의 두 설명서를 따릅니다.
+
 ### 저장본 제출 검토 구현
 
 `backend/app/review.py`와 `scripts/review_submission.py`는 자동 API 정책과 독립적인 오프라인 검토·내보내기를 제공합니다. `submission-review.json`은 capture SHA-256과 검출된 각 특징의 URL/location/technique/원문에 연결됩니다. 최초 판단은 모두 pending입니다. include/exclude에는 검토자·이유·시간대 있는 검토 시각이 필수입니다. 저장 HTML 해시·요소 단일 재식별·원문 일치·전체 검출 목록 보존·선택자 별칭 중복을 검증한 뒤 include만 명시적 true로 Result Builder에 전달합니다. pending/exclude를 false로 변환하지 않습니다.
