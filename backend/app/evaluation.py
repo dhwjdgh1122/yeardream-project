@@ -20,6 +20,7 @@ from .limits import AnalysisTimeout, Deadline
 from .models import AnalyzeRequest
 from .location import build_selector
 from .content import POLICY_VERSION, detect_content
+from .comparison import evaluation_url_key
 
 TECHNIQUES = ('HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN')
 Technique = Literal['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN']
@@ -78,14 +79,14 @@ def _write(path, data):
 
 
 def _key(item):
-    return (item['url'], item['location'], item['technique'])
+    return (evaluation_url_key(item['url']), item['location'], item['technique'])
 
 
 def _resolve_label(label, documents):
     path = []
     segments = label.location.split(' >>> ')
     for index, selector in enumerate(segments):
-        soup = documents.get((label.url, tuple(path)))
+        soup = documents.get((evaluation_url_key(label.url), tuple(path)))
         try:
             matches = soup.select(selector) if soup is not None else []
         except SelectorSyntaxError as error:
@@ -93,7 +94,7 @@ def _resolve_label(label, documents):
         if len(matches) != 1 or (index < len(segments) - 1 and matches[0].name != 'iframe'):
             raise ValueError(f'Label does not identify one saved element: {label.location}')
         path.append(build_selector(matches[0]))
-    return (label.url, ' >>> '.join(path), label.technique)
+    return (evaluation_url_key(label.url), ' >>> '.join(path), label.technique)
 
 
 def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=60, render_wait_ms=500):
@@ -138,7 +139,8 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
         documents.append(record)
     predictions = list({_key(item): item for item in predictions}.values())
     root = Path(__file__).resolve().parents[2]
-    sources = ['backend/app/detection.py', 'backend/app/content.py', 'backend/app/location.py', 'constraints-windows-py314.txt']
+    sources = ['backend/app/detection.py', 'backend/app/content.py', 'backend/app/location.py',
+               'backend/app/comparison.py', 'constraints-windows-py314.txt']
     capture = {
         'schema_version': 1, 'purpose': 'feature_detection',
         'captured_at': datetime.now(timezone.utc).isoformat(),
@@ -182,10 +184,11 @@ def _replay_capture(directory):
         if _hash(raw) != record['sha256']:
             raise ValueError(f'Snapshot hash mismatch: {record["file"]}')
         page = {**record, 'html': raw.decode('utf-8')}
-        doc_key = (record.get('top_url') or record['url'], tuple(record.get('frame_path', [])))
-        if doc_key in documents:
-            raise ValueError('Duplicate document context')
-        documents[doc_key] = BeautifulSoup(page['html'], 'html5lib')
+        doc_key = (evaluation_url_key(record.get('top_url') or record['url']), tuple(record.get('frame_path', [])))
+        soup = BeautifulSoup(page['html'], 'html5lib')
+        if doc_key in documents and str(documents[doc_key]) != str(soup):
+            raise ValueError('Equivalent URLs have conflicting saved document contexts')
+        documents[doc_key] = soup
         features = detect_page(page)
         content_candidates.extend(detect_content(page, feature_findings=features))
         for finding in features:
@@ -228,7 +231,7 @@ def evaluate_capture(directory, *, kind='feature'):
     dimension = 'category' if content_mode else 'technique'
     names = CATEGORIES if content_mode else TECHNIQUES
     if content_mode:
-        predictions = {(p['url'], p['location'], p['category']): p for p in content_candidates}
+        predictions = {(evaluation_url_key(p['url']), p['location'], p['category']): p for p in content_candidates}
     counts = {name: {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0} for name in names}
     reviewed_keys = set()
     seen_labels = set()
@@ -239,7 +242,7 @@ def evaluate_capture(directory, *, kind='feature'):
                 raise ValueError('A violation verdict needs a reviewer and verdict reason')
             if not label.reviewed:
                 raise ValueError('A violation verdict requires a reviewed content label')
-        key = (label.url, label.location, label.technique)
+        key = (evaluation_url_key(label.url), label.location, label.technique)
         if key in seen_labels:
             raise ValueError('Duplicate label')
         seen_labels.add(key)
@@ -278,6 +281,7 @@ def evaluate_capture(directory, *, kind='feature'):
         'capture_sha256': _hash(capture_raw), 'captured_at': capture['captured_at'],
         'labels_sha256': _hash(labels_raw),
         'evaluator_sha256': _hash(Path(__file__).read_bytes()),
+        'url_comparison_sha256': _hash(Path(__file__).with_name('comparison.py').read_bytes()),
         'request': capture['request'],
         'policy': labels.policy, 'review_complete': labels.complete,
         'collection_warnings': capture['warnings'], 'document_count': len(documents),

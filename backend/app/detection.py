@@ -115,6 +115,8 @@ def detect_page(page: Dict[str, object], *, deadline: Deadline | None = None) ->
                     "location": " >>> ".join([*frame_path, selector]),
                     "url": url,
                     "evidence": f"{explanation} 원문: {text[:500]}",
+                    "source_text": ''.join(str(child) for child in element.children
+                                           if isinstance(child, NavigableString) and not isinstance(child, Comment)),
                     "confidence": 0.82 if technique in {"TRANSPARENT", "OFFSCREEN"} else 0.75,
                 }
             )

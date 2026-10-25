@@ -83,8 +83,10 @@
         <p>
           <button id="download" disabled>JSON 다운로드</button>
           <button id="downloadContent" disabled>광고 후보 다운로드</button>
+          <button id="downloadExtra" disabled>추가 탐지 결과 다운로드</button>
         </p>
         <p>JSON 다운로드는 4종 위장·은닉 결과, 광고 후보 다운로드는 내용 판별 결과를 저장합니다. 화면 필터와 관계없이 전체 결과를 저장합니다. 광고 후보는 검토가 필요하며 부분 분석 안내도 확인해 주세요.</p>
+        <p>추가 탐지 결과 다운로드는 광고 후보를 result_extra.json으로 저장합니다. 후보 검출은 불법 여부의 확정 판정이 아닙니다.</p>
         <div class="result" id="output">결과가 여기에 표시됩니다.</div>
       </div>
     </div>
@@ -98,6 +100,7 @@
       const collectionMode = document.getElementById('collectionMode');
       const downloadButton = document.getElementById('download');
       const downloadContentButton = document.getElementById('downloadContent');
+      const downloadExtraButton = document.getElementById('downloadExtra');
       let lastAnalysis = null;
 
       function renderFindings(data) {
@@ -131,6 +134,7 @@
         lastAnalysis = null;
         downloadButton.disabled = true;
         downloadContentButton.disabled = true;
+        downloadExtraButton.disabled = true;
         const url = urlInput.value.trim();
         if (!url) {
           status.textContent = 'URL을 입력해 주세요.';
@@ -159,6 +163,7 @@
           renderFindings(lastAnalysis);
           downloadButton.disabled = !data.result_json;
           downloadContentButton.disabled = false;
+          downloadExtraButton.disabled = !data.result_extra_json;
           const completion = data.warnings?.length ? '분석 완료(일부 범위 미분석)' : '분석 완료';
           status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개`;
         } catch (error) {
@@ -202,6 +207,11 @@
           warnings: lastAnalysis.warnings || [],
           candidates: lastAnalysis.content_candidates || []
         }, 'content-candidates.json');
+      });
+
+      downloadExtraButton.addEventListener('click', () => {
+        if (downloadExtraButton.disabled || !lastAnalysis?.result_extra_json) return;
+        downloadJson(lastAnalysis.result_extra_json, 'result_extra.json');
       });
 
       techniqueFilter.addEventListener('change', () => {

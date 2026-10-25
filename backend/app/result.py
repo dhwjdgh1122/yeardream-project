@@ -1,13 +1,19 @@
-"""Map internal detector output to the team's result file format."""
+"""Map internal output to the contest PDF's result tables/examples (pp.10–14)."""
 
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
+
+from .comparison import evaluation_url_key
 
 
-class ResultMeta(BaseModel):
-    topic: str = "illegal-ad-detection"
+class StrictResultModel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
+class ResultMeta(StrictResultModel):
+    topic: Literal['TOPIC'] = 'TOPIC'
     entry_url: str = Field(min_length=1)
     started_at: str
     finished_at: str
@@ -15,7 +21,7 @@ class ResultMeta(BaseModel):
     tool_version: str = "YearDream-0.1.0"
 
 
-class ResultFinding(BaseModel):
+class ResultFinding(StrictResultModel):
     id: str = Field(min_length=1)
     url: str = Field(min_length=1)
     is_violation: StrictBool
@@ -24,9 +30,23 @@ class ResultFinding(BaseModel):
     technique: Literal["HOMOGLYPH", "JAMO", "TRANSPARENT", "OFFSCREEN"]
 
 
-class ResultDocument(BaseModel):
+class ResultDocument(StrictResultModel):
     meta: ResultMeta
     findings: list[ResultFinding]
+
+
+class ExtraFinding(StrictResultModel):
+    id: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+    location: str = Field(min_length=1)
+    evidence_text: str = Field(min_length=1)
+    technique: Literal['ETC'] = 'ETC'
+    extra_finding: Literal['GAMBLING_PROMOTION_CANDIDATE', 'ADULT_CONTENT_PROMOTION_CANDIDATE']
+
+
+class ExtraResultDocument(StrictResultModel):
+    meta: ResultMeta
+    findings: list[ExtraFinding]
 
 
 def build_result_json(entry_url, findings, *, started_at=None, finished_at=None):
@@ -38,7 +58,9 @@ def build_result_json(entry_url, findings, *, started_at=None, finished_at=None)
     converted = []
     seen = set()
     for finding in findings:
-        key = (finding["url"], finding["location"], finding["technique"])
+        if 'source_text' not in finding:
+            raise ValueError('Submission findings require original source_text')
+        key = (evaluation_url_key(finding["url"]), finding["location"], finding["technique"])
         if key in seen:
             continue
         seen.add(key)
@@ -48,7 +70,7 @@ def build_result_json(entry_url, findings, *, started_at=None, finished_at=None)
             # Preserve the legacy contract until the analyst's verdict policy is defined.
             is_violation=finding.get("is_violation", True),
             location=finding["location"],
-            evidence_text=finding["evidence"],
+            evidence_text=finding['source_text'],
             technique=finding["technique"],
         ))
 
@@ -61,3 +83,20 @@ def build_result_json(entry_url, findings, *, started_at=None, finished_at=None)
         ),
         findings=converted,
     ).model_dump()
+
+
+def build_extra_result_json(meta, candidates):
+    """Export optional content candidates, not confirmed legal verdicts (PDF p.13)."""
+    findings = []
+    seen = set()
+    for candidate in candidates:
+        key = (evaluation_url_key(candidate['url']), candidate['location'], candidate['category'])
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(ExtraFinding(
+            id=f'extra-{len(findings) + 1}', url=candidate['url'], location=candidate['location'],
+            evidence_text=candidate['source_text'],
+            extra_finding=candidate['category'] + '_PROMOTION_CANDIDATE',
+        ))
+    return ExtraResultDocument(meta=ResultMeta.model_validate(meta), findings=findings).model_dump()

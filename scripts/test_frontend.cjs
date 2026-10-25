@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../frontend/static/index.html'), 'utf8');
 const elements = {};
-for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode', 'download', 'downloadContent']) {
+for (const id of ['url', 'output', 'status', 'techniqueFilter', 'analyze', 'collectionMode', 'download', 'downloadContent', 'downloadExtra']) {
   elements[id] = { value: '', textContent: '', disabled: false, handlers: {},
     addEventListener(event, callback) { this.handlers[event] = callback; } };
 }
@@ -15,6 +15,7 @@ elements.techniqueFilter.value = 'ALL';
 elements.collectionMode.value = 'static';
 elements.download.disabled = true;
 elements.downloadContent.disabled = true;
+elements.downloadExtra.disabled = true;
 const response = {
   url: elements.url.value, page_title: 'Fixture', crawled_pages: [elements.url.value],
   findings: [
@@ -26,6 +27,9 @@ const response = {
 response.result_json = { meta: { entry_url: response.url }, findings: [
   { id: 'finding-1', technique: 'JAMO', evidence_text: '한글 근거', is_violation: true },
   { id: 'finding-2', technique: 'TRANSPARENT', evidence_text: 'B', is_violation: true },
+] };
+response.result_extra_json = { meta: { topic: 'TOPIC', entry_url: response.url }, findings: [
+  { id: 'extra-1', technique: 'ETC', extra_finding: 'GAMBLING_PROMOTION_CANDIDATE', evidence_text: '가입 원문' },
 ] };
 let fail = false;
 const downloads = [];
@@ -56,6 +60,7 @@ const context = vm.createContext({
     assert.equal(elements.collectionMode.disabled, true);
     assert.equal(elements.download.disabled, true);
     assert.equal(elements.downloadContent.disabled, true);
+    assert.equal(elements.downloadExtra.disabled, true);
     assert.equal(JSON.parse(options.body).collection_mode, elements.collectionMode.value);
     if (fail) throw new Error('Fixture failure');
     return { ok: true, json: async () => response };
@@ -91,6 +96,12 @@ async function run() {
   assert.equal(Buffer.from(await downloads[0].blob.arrayBuffer()).subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])), false);
   cleanup.splice(0).forEach(callback => callback());
   assert.equal(objectUrls.size, 0);
+  // Use a separate download then remove it from the shared checks' history.
+  elements.downloadExtra.handlers.click();
+  const extraDownload = downloads.pop();
+  assert.equal(extraDownload.filename, 'result_extra.json');
+  assert.deepEqual(JSON.parse(await extraDownload.blob.text()), response.result_extra_json);
+  cleanup.splice(0).forEach(callback => callback());
   elements.downloadContent.handlers.click();
   assert.equal(downloads[1].filename, 'content-candidates.json');
   const contentReport = JSON.parse(await downloads[1].blob.text());
@@ -108,6 +119,8 @@ async function run() {
   assert.equal(elements.output.textContent, 'Fixture failure');
   assert.equal(elements.download.disabled, true);
   assert.equal(elements.downloadContent.disabled, true);
+  assert.equal(elements.downloadExtra.disabled, true);
+  elements.downloadExtra.handlers.click();
   elements.download.handlers.click();
   elements.downloadContent.handlers.click();
   assert.equal(downloads.length, 2);
@@ -116,13 +129,18 @@ async function run() {
   fail = false;
   response.findings = [];
   response.result_json = { meta: { entry_url: response.url }, findings: [] };
+  response.result_extra_json = { meta: { topic: 'TOPIC', entry_url: response.url }, findings: [] };
   await elements.analyze.handlers.click();
+  elements.downloadExtra.handlers.click();
+  assert.deepEqual(JSON.parse(await downloads.pop().blob.text()), response.result_extra_json);
+  cleanup.splice(0).forEach(callback => callback());
   elements.download.handlers.click();
   assert.deepEqual(JSON.parse(await downloads[2].blob.text()), response.result_json);
   cleanup.splice(0).forEach(callback => callback());
   elements.url.value = '  ';
   await elements.analyze.handlers.click();
   assert.equal(elements.download.disabled, true);
+  assert.equal(elements.downloadExtra.disabled, true);
   elements.download.handlers.click();
   assert.equal(downloads.length, 3);
   assert.equal(objectUrls.size, 0);

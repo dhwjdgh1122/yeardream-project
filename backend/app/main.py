@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from .crawler import crawl_site
 from .detection import detect_page
-from .result import build_result_json
+from .result import build_extra_result_json, build_result_json
 from .models import AnalyzeRequest, AnalysisResponse, Finding
 from .limits import AnalysisTimeout, Deadline
 from .browser import BrowserRenderer, BrowserUnavailable
@@ -109,13 +109,17 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
                         "location": detected["location"],
                         "url": detected["url"],
                         "evidence": detected["evidence"],
+                        "source_text": detected["source_text"],
                         "confidence": float(detected["confidence"]),
                     }
                 )
 
         finished_at = datetime.now(timezone.utc).isoformat()
         result_json = build_result_json(payload.url, raw_findings, started_at=started_at, finished_at=finished_at)
+        result_extra_json = build_extra_result_json(result_json['meta'], content_candidates)
         result_path.write_text(json.dumps(result_json, ensure_ascii=False, indent=2), encoding="utf-8")
+        result_path.with_name('result_extra.json').write_text(
+            json.dumps(result_extra_json, ensure_ascii=False, indent=2), encoding='utf-8')
 
         page_title = successful_pages[0].get("title")
         return AnalysisResponse(
@@ -127,6 +131,7 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             content_candidates=content_candidates,
             content_policy_version=POLICY_VERSION,
             result_json=result_json,
+            result_extra_json=result_extra_json,
             warnings=list(dict.fromkeys(warnings)),
         )
     except HTTPException:

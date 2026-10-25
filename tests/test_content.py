@@ -84,11 +84,14 @@ def test_content_timeout_does_not_publish_half_a_page(monkeypatch, tmp_path):
     monkeypatch.setattr(main, 'detect_content', expired)
     output = tmp_path / 'result.json'
     output.write_text('previous', encoding='utf-8')
+    extra_output = tmp_path / 'result_extra.json'
+    extra_output.write_text('previous extra', encoding='utf-8')
     monkeypatch.setattr(main, 'result_path', output)
     with TestClient(main.app) as client:
         response = client.post('/api/analyze', json={'url': 'https://example.test'})
     assert response.status_code == 504
     assert output.read_text(encoding='utf-8') == 'previous'
+    assert extra_output.read_text(encoding='utf-8') == 'previous extra'
 
 
 def test_repeated_frame_content_candidates_stay_distinct(monkeypatch, tmp_path):

@@ -27,6 +27,7 @@ class ContentCandidate(BaseModel):
     selector: str
     location: str
     evidence: str
+    source_text: str = ''
     matched_terms: List[str]
     techniques: List[str] = Field(default_factory=list)
     review_status: Literal['needs_review'] = 'needs_review'
@@ -42,4 +43,5 @@ class AnalysisResponse(BaseModel):
     content_candidates: List[ContentCandidate] = Field(default_factory=list)
     content_policy_version: str = 'content-rules-v2'
     result_json: Dict[str, Any]
+    result_extra_json: Dict[str, Any] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)

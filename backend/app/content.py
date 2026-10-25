@@ -55,7 +55,7 @@ def _text_units(soup, deadline):
     for node in soup.descendants:
         if deadline:
             deadline.check()
-        if not isinstance(node, NavigableString) or isinstance(node, Comment) or not node.strip():
+        if not isinstance(node, NavigableString) or isinstance(node, Comment):
             continue
         parents = list(node.parents)
         if any(parent.name in EXCLUDED for parent in parents):
@@ -102,6 +102,7 @@ def detect_content(page, *, feature_findings=(), deadline=None):
                     'category': category, 'url': url, 'selector': selector,
                     'location': ' >>> '.join([*frame_path, selector]),
                     'evidence': f'홍보 내용 후보: {topic} / {action}. 문맥: {excerpt}',
+                    'source_text': ''.join(parts),
                     'matched_terms': [topic, action],
                     'techniques': sorted(techniques), 'review_status': 'needs_review',
                     'policy_version': POLICY_VERSION,

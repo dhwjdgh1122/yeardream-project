@@ -101,6 +101,7 @@ def run():
                     page.goto(base)
                     assert page.locator('#download').is_disabled()
                     assert page.locator('#downloadContent').is_disabled()
+                    assert page.locator('#downloadExtra').is_disabled()
 
                     def download_json(data, name):
                         with page.expect_download() as pending:
@@ -112,6 +113,16 @@ def run():
                         raw = path.read_bytes()
                         assert not raw.startswith(b'\xef\xbb\xbf')
                         assert json.loads(raw.decode('utf-8')) == data['result_json']
+                        assert data['result_json']['meta']['topic'] == 'TOPIC'
+                        with page.expect_download() as pending_extra:
+                            page.locator('#downloadExtra').click()
+                        extra_download = pending_extra.value
+                        assert extra_download.suggested_filename == 'result_extra.json'
+                        extra_path = Path(temporary) / f'{name}.extra.json'
+                        extra_download.save_as(extra_path)
+                        extra_raw = extra_path.read_bytes()
+                        assert not extra_raw.startswith(b'\xef\xbb\xbf')
+                        assert json.loads(extra_raw) == data['result_extra_json']
 
                     def analyze(name, expected_status=200):
                         page.locator('#url').fill(f'{base}/fixtures/{name}')
@@ -120,7 +131,10 @@ def run():
                         response = pending.value
                         assert response.status == expected_status, response.text()
                         page.wait_for_function("!document.querySelector('#analyze').disabled")
-                        return response.json()
+                        data = response.json()
+                        if expected_status == 200:
+                            assert json.loads(main.result_path.with_name('result_extra.json').read_bytes()) == data['result_extra_json']
+                        return data
 
                     data = analyze('root')
                     assert len(data['findings']) == 9, data
@@ -230,6 +244,8 @@ def run():
                     page.locator('#collectionMode').select_option('static')
                     content = analyze('content')
                     assert len(content['content_candidates']) == 2 and not content['findings']
+                    assert len(content['result_extra_json']['findings']) == 2
+                    assert all(item['technique'] == 'ETC' for item in content['result_extra_json']['findings'])
                     assert '광고 후보 2개' in page.locator('#status').inner_text()
                     assert {item['location'] for item in content['content_candidates']} == {'p#gamble', 'p#adult'}
                     for category in ['GAMBLING', 'ADULT_CONTENT']:
@@ -250,6 +266,7 @@ def run():
                     download_json(content, 'content-four-technique-json')
                     analyze('missing', 502)
                     assert page.locator('#downloadContent').is_disabled()
+                    assert page.locator('#downloadExtra').is_disabled()
                     assert not errors, errors
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
                     print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')

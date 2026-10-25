@@ -4,7 +4,7 @@ from backend.app.result import build_result_json
 
 
 def test_result_preserves_distinct_locations_and_techniques():
-    base = dict(url='https://example.com', location='div#a', technique='JAMO', evidence='sample')
+    base = dict(url='https://example.com', location='div#a', technique='JAMO', source_text='sample')
     payload = build_result_json(
         base['url'],
         [base, base.copy(), {**base, 'location': 'div#b'}, {**base, 'technique': 'HOMOGLYPH'}],
@@ -20,10 +20,10 @@ def test_result_preserves_distinct_locations_and_techniques():
     {'technique': 'UNKNOWN'},
     {'is_violation': 'false'},
     {'location': ''},
-    {'evidence': ''},
+    {'source_text': ''},
 ])
 def test_invalid_result_data_is_rejected(changes):
-    finding = dict(url='https://example.com', location='div', technique='JAMO', evidence='sample')
+    finding = dict(url='https://example.com', location='div', technique='JAMO', source_text='sample')
     with pytest.raises(ValueError):
         build_result_json(finding['url'], [{**finding, **changes}])
 

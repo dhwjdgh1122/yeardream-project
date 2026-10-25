@@ -51,6 +51,7 @@ def test_build_result_json_uses_required_schema():
             "location": "div.ad",
             "url": "https://example.com",
             "evidence": "화면 밖 배치가 감지되었습니다.",
+            "source_text": "광고 원문",
             "confidence": 0.82,
         }
     ]
