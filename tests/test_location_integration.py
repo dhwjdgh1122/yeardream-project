@@ -10,12 +10,12 @@ from backend.app import crawler, main
 def test_locations_survive_crawl_api_result_and_file(monkeypatch, tmp_path):
     documents = {
         'https://example.com': '''<title>Root</title>
-            <p class="ad" style="opacity:0">First</p>
-            <p class="ad" style="opacity:0">Second</p>
+            <p class="ad" style="opacity:0">First 카지노 가입 보너스</p>
+            <p class="ad" style="opacity:0">Second 카지노 가입 보너스</p>
             <iframe src="/shared"></iframe><iframe src="/shared"></iframe>
             <iframe src="/bad"></iframe>''',
         'https://example.com/shared': '<iframe id="inner" src="/nested"></iframe>',
-        'https://example.com/nested': '<p id="ad:1" style="opacity:0">Nested</p>',
+        'https://example.com/nested': '<p id="ad:1" style="opacity:0">Nested 카지노 가입 보너스</p>',
     }
 
     def fetch(url, **kwargs):

@@ -878,7 +878,7 @@ Result Builder는 Detection Engine과 분리한다.
 
 # 31. result.json
 
-필드·자료형·빈 findings·인코딩·판정 정책은 [wiki.md](wiki.md)의 5~7절을 따른다. PDF 표/예시에 따라 meta.topic=TOPIC, 정규화 전 근거 원문, 필수 4종 result.json 및 추가 유형 result_extra.json을 구분한다. 화면 설명을 원문 필드에 섞지 않는다. PDF 기반 계약 테스트 통과와 주최 측 실제 채점 통과를 구분한다.
+필드·자료형·빈 findings·인코딩·판정 정책은 [wiki.md](wiki.md)의 5~7절을 따른다. PDF 표/예시에 따라 meta.topic=TOPIC, 정규화 전 근거 원문, 필수 4종 result.json 및 추가 유형 result_extra.json을 구분한다. 화면 설명을 원문에 섞지 않으며 판정값 누락을 true로 바꾸지 않는다. 제출 후보 선택과 단순 특징 검출을 분리하고 실제 홍보 구간과 관련된 특징인지 검증한다. 미판정은 검토 상태로 보존하며 정상으로 확정하지 않는다. 자체 규칙/계약 테스트와 주최 측 실제 채점을 구분한다.
 
 ---
 

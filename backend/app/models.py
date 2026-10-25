@@ -19,6 +19,14 @@ class Finding(BaseModel):
     url: str
     evidence: str
     confidence: float = 0.0
+    submission_status: Literal['included', 'needs_review'] = 'needs_review'
+    submission_reason: str = ''
+    submission_categories: List[str] = Field(default_factory=list)
+
+
+class FeatureLink(BaseModel):
+    location: str
+    technique: Literal['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN']
 
 
 class ContentCandidate(BaseModel):
@@ -30,6 +38,7 @@ class ContentCandidate(BaseModel):
     source_text: str = ''
     matched_terms: List[str]
     techniques: List[str] = Field(default_factory=list)
+    feature_links: List[FeatureLink] = Field(default_factory=list)
     review_status: Literal['needs_review'] = 'needs_review'
     policy_version: str
 
@@ -41,7 +50,8 @@ class AnalysisResponse(BaseModel):
     crawled_pages: List[str]
     findings: List[Finding]
     content_candidates: List[ContentCandidate] = Field(default_factory=list)
-    content_policy_version: str = 'content-rules-v2'
+    content_policy_version: str = 'content-rules-v3'
+    submission_policy_version: str = 'feature-content-policy-v1'
     result_json: Dict[str, Any]
     result_extra_json: Dict[str, Any] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)

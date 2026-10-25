@@ -27,5 +27,6 @@ def test_detection_matches_exact_elements_and_techniques(case):
                 for element_id, techniques in case['expected'].items()
                 for technique in techniques]
     assert sorted(actual) == sorted(expected)
-    result = build_result_json('https://example.com/fixture', findings)
+    # These labels test feature serialization; submission selection has separate policy tests.
+    result = build_result_json('https://example.com/fixture', [{**item, 'is_violation': True} for item in findings])
     assert len(result['findings']) == len(expected)

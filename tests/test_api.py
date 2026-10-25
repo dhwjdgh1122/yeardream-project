@@ -19,7 +19,7 @@ def test_health_and_frontend_are_served():
 def test_analyze_collects_linked_pages_and_saves_matching_result(monkeypatch, tmp_path):
     pages = {
         'https://example.com': '<title>Fixture</title><a href="/child">Child</a>',
-        'https://example.com/child': '<div id="promo" style="color:transparent">광고</div>',
+        'https://example.com/child': '<div id="promo" style="color:transparent">카지노 가입 보너스</div>',
     }
     requested = []
 
@@ -41,12 +41,12 @@ def test_analyze_collects_linked_pages_and_saves_matching_result(monkeypatch, tm
     assert len(data['findings']) == 1
     finding = data['result_json']['findings'][0]
     assert finding['technique'] == 'TRANSPARENT'
-    assert finding['evidence_text'] == '광고'
-    assert '원문: 광고' in data['findings'][0]['evidence']
+    assert finding['evidence_text'] == '카지노 가입 보너스'
+    assert '원문: 카지노 가입 보너스' in data['findings'][0]['evidence']
     assert finding['location'] == data['findings'][0]['location']
     raw = output.read_bytes()
     assert not raw.startswith(b'\xef\xbb\xbf')
-    assert '광고' in raw.decode('utf-8') or '은닉' in raw.decode('utf-8')
+    assert '카지노 가입 보너스' in raw.decode('utf-8')
     assert json.loads(raw) == data['result_json']
 
 

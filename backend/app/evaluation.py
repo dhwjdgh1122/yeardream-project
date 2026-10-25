@@ -22,6 +22,7 @@ from .location import build_selector
 from .content import POLICY_VERSION, detect_content
 from .comparison import evaluation_url_key
 from .rendered import POLICY_VERSION as RENDERED_POLICY_VERSION
+from .policy import POLICY_VERSION as SUBMISSION_POLICY_VERSION, assess_findings
 
 TECHNIQUES = ('HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN')
 Technique = Literal['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN']
@@ -113,6 +114,7 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
     documents = []
     predictions = []
     content_candidates = []
+    submission_assessments = []
     warnings = []
     output.mkdir(parents=True)
     for index, page in enumerate(pages):
@@ -127,8 +129,10 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
             try:
                 features = detect_page(page, deadline=deadline)
                 content = detect_content(page, feature_findings=features, deadline=deadline)
+                assessments = assess_findings(features, content, deadline=deadline)
                 predictions.extend(features)
                 content_candidates.extend(content)
+                submission_assessments.extend(assessments)
             except AnalysisTimeout:
                 record['detection_incomplete'] = True
                 warnings.append({'kind': 'detection_timeout', 'url': page['url']})
@@ -142,6 +146,7 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
     root = Path(__file__).resolve().parents[2]
     sources = ['backend/app/detection.py', 'backend/app/content.py', 'backend/app/location.py',
                'backend/app/comparison.py', 'backend/app/browser.py', 'backend/app/rendered.py', 'backend/app/rendered_snapshot.js',
+               'backend/app/textnorm.py', 'backend/app/policy.py',
                'constraints-windows-py314.txt']
     capture = {
         'schema_version': 1, 'purpose': 'feature_detection',
@@ -153,6 +158,8 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
         'documents': documents, 'predictions': predictions, 'content_candidates': content_candidates,
         'content_policy_version': POLICY_VERSION, 'warnings': warnings,
         'rendered_policy_version': RENDERED_POLICY_VERSION,
+        'submission_policy_version': SUBMISSION_POLICY_VERSION,
+        'submission_assessments': submission_assessments,
     }
     _write(output / 'capture.json', capture)
     labels = Labels(capture_sha256=_hash((output / 'capture.json').read_bytes()),
@@ -233,6 +240,7 @@ def evaluate_capture(directory, *, kind='feature'):
         raise ValueError('Labels do not belong to this capture')
     dimension = 'category' if content_mode else 'technique'
     names = CATEGORIES if content_mode else TECHNIQUES
+    submission_assessments = assess_findings(list(predictions.values()), content_candidates)
     if content_mode:
         predictions = {(evaluation_url_key(p['url']), p['location'], p['category']): p for p in content_candidates}
     counts = {name: {'tp': 0, 'fp': 0, 'fn': 0, 'tn': 0} for name in names}
@@ -297,6 +305,12 @@ def evaluate_capture(directory, *, kind='feature'):
         'prediction_count': len(predictions), 'unreviewed_labels': pending,
         'content_candidate_count': len(content_candidates), 'content_candidates': content_candidates,
         'content_policy_version': POLICY_VERSION,
+        'submission_policy_version': SUBMISSION_POLICY_VERSION,
+        'submission_assessments': submission_assessments,
+        'submission_candidate_count': sum(item['submission_status'] == 'included' for item in submission_assessments),
+        'submission_policy_sha256': _hash(Path(__file__).with_name('policy.py').read_bytes()),
+        'text_normalization_sha256': _hash(Path(__file__).with_name('textnorm.py').read_bytes()),
+        'content_detector_sha256': _hash(Path(__file__).with_name('content.py').read_bytes()),
         'metrics_purpose': 'content_presence_only' if content_mode else 'four_technique_features_only',
         'unjudged_predictions': 0 if labels.complete else len(unknown),
         'counts': totals, f'by_{dimension}': counts,

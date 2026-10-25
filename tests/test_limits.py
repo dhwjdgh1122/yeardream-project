@@ -113,12 +113,14 @@ def test_timeout_after_completed_page_returns_partial_findings(monkeypatch, tmp_
     monkeypatch.setattr(crawler, 'fetch_html', lambda url, **kwargs: (
         '<p id="ad" style="opacity:0">Ad</p><a href="/child">Child</a>' if url.endswith('.com') else '<p>Child</p>', url))
 
-    def detect(page, **kwargs):
-        findings = detect_content(page, **kwargs)
+    assess_findings = main.assess_findings
+
+    def assess(*args, **kwargs):
+        findings = assess_findings(*args, **kwargs)
         clock[0] = 2
         return findings
 
-    monkeypatch.setattr(main, 'detect_content', detect)
+    monkeypatch.setattr(main, 'assess_findings', assess)
     monkeypatch.setattr(main, 'result_path', tmp_path / 'result.json')
     with TestClient(main.app) as client:
         response = client.post('/api/analyze', json={'url': 'https://example.com', 'total_timeout_sec': 1})

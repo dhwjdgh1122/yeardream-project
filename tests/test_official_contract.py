@@ -31,7 +31,7 @@ def test_pdf_distinct_pages_are_not_merged(other):
 def test_raw_evidence_keeps_whitespace_unicode_and_long_text():
     original = '  ㅋㅏㅈㅣㄴㅗ\n\tｍｅｇａ－ＢＥＴ\u200b  ' + '원문' * 400 + ' 끝  '
     findings = detect_page({'url': 'https://example.test', 'html': f'<p>{original}</p>'})
-    result = build_result_json('https://example.test', findings)
+    result = build_result_json('https://example.test', [{**item, 'is_violation': True} for item in findings])
     assert result['meta']['topic'] == 'TOPIC'
     assert {item['technique'] for item in result['findings']} == {'JAMO', 'HOMOGLYPH'}
     assert all(item['evidence_text'] == original for item in result['findings'])
@@ -40,7 +40,7 @@ def test_raw_evidence_keeps_whitespace_unicode_and_long_text():
 
 def test_equivalent_urls_deduplicate_submission_without_rewriting_output_url():
     base = dict(url='http://example.test/page/?b=2&a=1#x', location='p#ad',
-                technique='JAMO', source_text='원문')
+                technique='JAMO', source_text='원문', is_violation=True)
     result = build_result_json(base['url'], [base, {**base, 'url': 'https://example.test/page?a=1&b=2'}])
     assert len(result['findings']) == 1
     assert result['findings'][0]['url'] == base['url']

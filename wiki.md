@@ -119,13 +119,15 @@ HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 
 
 PDF 5쪽은 font-size 0~1px, position:absolute; left:-9999px, display:none을 OFFSCREEN 예시로 명시합니다. TRANSPARENT에는 배경색과 같은 색, opacity:0, color:transparent를 제시합니다. 이 예시를 실제 DOM·스타일 검증으로 구현해야 하며 정상 UI나 광고 여부는 별도 확인합니다. 겹치는 속성만으로 두 유형을 모두 확정하지 않습니다.
 
-위장·은닉 특징 발견과 불법광고 위반 판정은 구분합니다. 실제 텍스트·맥락·정답 기준을 함께 검토하며 CSS 속성 하나로 is_violation=true를 확정하지 않습니다. 광고 판정 조건·키워드·임계값·정확도 목표는 사용자의 기준 확정 전입니다. 고정 confidence를 측정 정확도로 설명하지 않습니다.
+위장·은닉 특징 발견과 광고 판정은 구분합니다. policy.py의 feature-content-policy-v1은 특징의 실제 원문 구간이 관련 홍보 주제/유도 표현 구간과 겹치는 경우만 자동 제출 후보로 선택합니다. 이것은 구현 정책이며 PDF가 키워드·임계값을 지정한 것은 아닙니다. 규칙상 true와 법적 위반 확정을 동일시하지 않으며 고정 feature confidence도 측정 정확도가 아닙니다. 실제 판정 정확도는 별도 검수가 필요합니다.
 
-2026-10-25 사용자 설명에 따라 도박·성인물 후보 판별을 구현했고 이후 PDF 1·5쪽에서도 해당 범위를 확인했습니다. 실제 gen.go.kr 일반 표시 글에서 기존 4종 탐지 0건을 재현한 뒤 content-rules-v1을 추가했으며 현재 v2입니다. 표현/은닉 4종과 내용 범주는 독립적입니다. content_candidates는 검수용이고 result_extra.json은 PDF 13쪽의 ETC+extra_finding 형식으로 후보를 내보냅니다. 일반 표시 후보를 필수 4종으로 임의 분류하지 않습니다. 내용 후보 부재는 광고 부재를 보장하지 않습니다.
+2026-10-25 사용자 설명에 따라 도박·성인물 후보 판별을 구현했고 이후 PDF 1·5쪽에서도 범위를 확인했습니다. 실제 gen.go.kr 일반 표시 글의 공백에 대응한 v1·문장 문맥 v2를 거쳐 현재 content-rules-v3입니다. 표현/은닉 4종과 내용 범주는 독립적입니다. content_candidates는 검수용이고 result_extra.json은 PDF 13쪽의 ETC+extra_finding 형식입니다. 일반 표시 후보를 필수 4종으로 임의 분류하지 않으며 후보 부재도 광고 부재를 보장하지 않습니다.
 
-현재 content-rules-v2는 텍스트를 가장 가까운 블록에 귀속해 inline 조각은 합치고 서로 다른 문단은 섞지 않습니다. NFKC·일부 zero-width 문자 제거·공백 정리 후 같은 문장의 주제 표현과 유도 표현을 함께 검사합니다. 마침표·물음표·느낌표 뒤 공백/문서 끝과 전각 문장부호를 경계로 사용하며 도메인 내부 마침표는 유지합니다. 같은 문장 내 주제의 앞 45/뒤 100자 범위에서 가입·추천·홍보·무료시청 등의 단서가 필요합니다. 예방교육·피해예방·단속 보도·가입/접속 주의·광고 신고/삭제 요청 등 명시적인 보호 문맥이 있으면 해당 창을 제외합니다. 다른 문장의 안내나 가입 단서를 연결하지 않습니다. 문장 간 홍보·인용 보도·구두점 없는 문맥에는 한계가 있습니다. 동작하는 규칙과 예외는 content.py, tests/test_content.py 및 tests/fixtures/content/에 있습니다.
+v3는 텍스트를 가장 가까운 블록에 귀속해 inline 조각만 합치고 문단은 섞지 않습니다. 문장 경계와 주제 앞 45/뒤 100자의 규칙은 유지하며 도메인 내부 마침표를 경계로 만들지 않습니다. textnorm.py는 NFKC·현대 한글/호환 자모 재조합·제한된 키릴 닮은꼴→Latin 매핑·casefold·공백/일부 zero-width 제거를 판별용으로 적용합니다. 정규화 문자마다 원문 범위를 추적해 원문 자체는 바꾸지 않습니다. 카지노·성인물 등의 주제와 가입/보너스/시청/바로가기 등의 단서가 함께 필요합니다. PDF 예시의 mega-BET·슬롯 체험·먹튀검증/텔레그램 유도도 검증합니다. 예방교육·단속 보도·광고 신고/삭제 요청·피해상담 등 명시적 보호 문맥은 제외합니다. 전체 Unicode 위장·모든 자모 조합·은어·의미 이해를 지원하는 것은 아닙니다.
 
-후보 단위는 URL+location+category이며 GAMBLING/ADULT_CONTENT로 분류합니다. selector·근거 문맥·matched_terms·policy_version·needs_review 상태를 보존합니다. 같은 텍스트 블록의 4종 특징만 techniques에 연결하고 다른 하위 문단의 특징은 연결하지 않습니다. 고정 confidence나 is_violation을 새로 부여하지 않습니다. 짧은 공백/전각 변형은 처리하지만 일반적인 의미 이해·은어 전반·문단 간 문맥·이미지/OCR·CSS 기반 내용 판별은 미지원입니다. 보호 문구를 섞은 광고 등 회피/오탐 가능성도 남아 있습니다. 전체 정확도는 정답 데이터로 별도 측정해야 합니다.
+후보 단위는 URL+location+category이며 GAMBLING/ADULT_CONTENT로 분류합니다. selector·원문·근거 문맥·matched_terms·policy_version·needs_review 상태와 feature_links(location+technique)를 보존합니다. HOMOGLYPH/JAMO는 실제 의심 문자 구간, CSS 기법은 해당 요소의 직접 텍스트 중 공백/제거 대상 zero-width를 제외한 구간이 홍보 주제/유도 표현과 겹쳐야 연결합니다. URL·프레임·블록·문장을 넘겨 무관한 특징을 연결하지 않으며 techniques는 이 링크에서 계산합니다. 문단 안 별도 숨김 메뉴, 같은 요소의 전각 인사말/외국어 접두사, 숨김 zero-width만으로 홍보를 위장했다고 간주하지 않습니다. 후보 자체는 confidence나 is_violation 없이 검토 상태를 유지합니다.
+
+정책은 모든 특징을 included 또는 needs_review로 평가하고 이유·관련 범주를 API에 남깁니다. included만 result.json에 explicit is_violation=true로 전달하며 근거 부족은 false로 확정하거나 제출하지 않습니다. 미탐·인용 문맥 오탐·어휘 밖 광고의 검토 잔류 위험이 있으며 이 규칙은 실제 정확도 검증을 대체하지 않습니다. 정상 숨김 UI·외국어·초성도 특징 자체는 화면과 feature 평가에 남습니다.
 
 화면용 evidence에는 의심 문자·스타일·판정 이유를 설명합니다. 제출 evidence_text에는 별도 source_text의 정규화 전 DOM 텍스트를 설명 접두사나 길이 제한 없이 저장합니다(PDF 11쪽). HTML 마크업 문자열이 아니라 HTML 엔티티가 해석된 텍스트이며 공백·줄바꿈·전각·자모·zero-width 문자를 보존합니다. 필수 4종은 탐지 요소의 직접 텍스트 노드, 내용 후보는 같은 블록에 귀속된 텍스트 노드의 원래 순서로 수집합니다. 동적 모드는 관찰 시점의 DOM 원문입니다.
 
@@ -205,9 +207,9 @@ PDF 10~14쪽의 표와 예시에 따른 출력입니다. 표준 문서는 PDF이
 | finding.evidence_text | 정규화 전 원문 텍스트, 설명 접두사·자르기 없음 |
 | finding.technique | HOMOGLYPH / JAMO / TRANSPARENT / OFFSCREEN |
 
-PDF는 is_violation Boolean을 필수로 두고 true 예시를 제시하지만 정상·의심 사례를 어떻게 포함할지의 상세 판단 정책은 명시하지 않습니다. 이 정책은 추가 검증 대상입니다. 기존 테스트가 true를 기대한다는 사실만으로 판정 정책이 확정된 것은 아닙니다.
+PDF는 is_violation Boolean을 필수로 두고 true 예시를 제시하지만 상세 키워드·정상/의심 포함 정책은 명시하지 않습니다. 현재 자동 제출 후보 선택은 5절의 구현 정책을 적용하며 자체 검증과 주최 측 정답 판정을 구분합니다.
 
-실행 흐름 복구 단계의 Result Builder는 기존 계약을 유지해 내부 판정값이 없으면 true로 변환하고, 명시적 Boolean 판정은 보존합니다. 이는 임시 호환 동작이며 광고 판정 정확도가 검증됐다는 뜻이 아닙니다. location은 6절의 경로 형식으로 전환했습니다. 광고 판정 정책은 추가 검증이 필요합니다.
+Result Builder의 판정값 누락 시 true로 바꾸던 호환 동작은 제거했습니다. 내부 직접 호출도 source_text와 명시적 Boolean is_violation이 필요하며 누락/잘못된 자료형은 거부합니다. API는 선택된 후보만 true로 전달하고 미판정 특징은 제외합니다. 별도 내부 호출에서 명시한 false는 보존하지만 자동 정책이 근거 부족을 정상으로 변환하지는 않습니다. location은 6절을 따릅니다.
 
 필수 필드·자료형·허용 기법·ID·중복·시간·빈 배열을 검증합니다. 두 결과 모두 UTF-8 BOM 없이 meta+findings 두 키와 단일 findings 배열로 저장합니다. 기본 위치는 프로젝트 루트의 result.json 및 result_extra.json입니다. PDF는 구동 파일 폴더를 원칙으로 하며 다른 경로면 사용설명서 첫 장에 파일별 경로를 안내합니다. 배포용 구동 파일·동시 요청 및 두 파일 저장 중 디스크 오류의 트랜잭션 보장은 아직 미구현입니다.
 
@@ -227,7 +229,9 @@ PDF 12쪽에 따라 정답 핵심은 URL+실제 위치+기법이고 evidence_tex
 
 요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, content_candidates, content_policy_version, result_json, result_extra_json, warnings입니다. API finding의 technique/selector/location/url/evidence/confidence와 제출용 finding은 구분합니다. Result Builder는 내부 source_text를 제출 evidence_text로 변환하며 화면 설명 evidence를 제출 원문에 섞지 않습니다.
 
-한 페이지의 완료 기준은 4종 특징과 내용 후보 두 단계가 모두 끝난 시점입니다. 두 단계가 공유 Deadline을 사용하며 중간 만료 시 해당 페이지의 두 결과를 함께 버립니다. 앞서 완료한 페이지가 없으면 504, 있으면 그 결과와 부분 경고를 반환합니다.
+응답은 submission_policy_version과 각 finding의 submission_status/submission_reason/submission_categories를 포함합니다. 화면은 위장·은닉 특징, 내용 후보, 선택된 4종 제출 후보와 검토 대상을 구분합니다. result_json은 선택된 후보만 포함하므로 API finding 수와 다를 수 있습니다.
+
+한 페이지는 4종 특징·내용 후보·제출 후보 평가 세 단계가 모두 끝나야 완료입니다. 공유 Deadline이 중간 만료되면 해당 페이지의 결과를 함께 버립니다. 앞서 완료한 페이지가 없으면 504와 기존 두 파일 보존, 있으면 그 결과와 부분 경고를 반환합니다.
 
 browser 모드는 Playwright·Edge가 필요하며 시작 실패는 HTTP 503입니다. 정적으로 자동 전환하지 않습니다. 브라우저 시작·이동·추가 대기·수집·탐지는 동일 Deadline을 사용합니다. 이동 timeout은 남은 시간과 10초 중 작은 값이며 대기도 남은 시간으로 제한합니다. 드라이버 시작·DOM 직렬화·종료 등 모든 작업을 즉시 강제 종료하는 기능은 아닙니다. 오류 응답은 기존 결과 파일을 보존합니다. collection_mode는 API·UI 안내이며 제출 JSON에는 추가하지 않습니다.
 
@@ -266,7 +270,7 @@ capture/evaluate는 내용 후보·규칙 버전·후보 수도 별도 기록합
 
 정답 기준 초안은 문자 위장과 정상 외국어, 분리형 한글 위장과 정상 초성, 텍스트의 실제 은닉과 정상 표시, 화면 이탈과 정상 배치를 구분하는 것입니다. 접근성 텍스트·외국어·초성·작은 글꼴·display:none 등의 예외와 유형 경계는 사용자 기준으로 확정하고 labels.json의 policy에 버전을 기록합니다. 이 초안은 공식 위반 판정 기준이 아닙니다. 확정 전에는 expected=null·reviewed=false를 유지합니다.
 
-평가 단위는 최상위 URL+실제 요소 위치+기법입니다. 검토된 양성의 탐지/누락을 TP/FN, 검토된 정상의 탐지/미탐지를 FP/TN으로 기록합니다. 부분 검수는 미검토 탐지를 unknown으로 남기고 precision·recall·F1을 계산하지 않습니다. complete=true는 저장된 문서의 모든 양성 특징을 검수했다는 선언이며 이때 정답 밖의 탐지를 FP로 셉니다. 명시한 policy와 전 항목의 reviewed/Boolean 정답/근거가 필요합니다. 지표는 저장된 성공 문서의 특징 탐지 기준이며 전체 사이트나 is_violation의 정확도가 아닙니다. 기본 위반 판정 true와 고정 confidence는 정답으로 사용하지 않습니다.
+평가 단위는 최상위 URL+실제 요소 위치+기법입니다. 검토된 양성의 탐지/누락을 TP/FN, 정상의 탐지/미탐지를 FP/TN으로 기록합니다. 부분 검수는 미검토 탐지를 unknown으로 남기고 지표를 계산하지 않습니다. complete=true는 저장된 문서의 모든 양성 특징 검수 선언이며 정답 밖 탐지는 FP입니다. 명시한 policy·전 항목의 reviewed/Boolean 정답/근거가 필요합니다. feature/content 지표는 제출 선택 정확도나 전체 사이트 정확도가 아닙니다. capture/evaluate는 submission_assessments·정책 버전과 코드/정규화 해시도 기록하며 submission_candidate_count는 단순 선택 건수입니다. 고정 confidence나 자동 true를 정답으로 사용하지 않습니다.
 
 ## 10. 미확정 사항·선택 기능
 

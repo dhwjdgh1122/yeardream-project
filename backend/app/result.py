@@ -60,6 +60,8 @@ def build_result_json(entry_url, findings, *, started_at=None, finished_at=None)
     for finding in findings:
         if 'source_text' not in finding:
             raise ValueError('Submission findings require original source_text')
+        if 'is_violation' not in finding:
+            raise ValueError('Submission findings require an explicit is_violation Boolean')
         key = (evaluation_url_key(finding["url"]), finding["location"], finding["technique"])
         if key in seen:
             continue
@@ -67,8 +69,7 @@ def build_result_json(entry_url, findings, *, started_at=None, finished_at=None)
         converted.append(ResultFinding(
             id=f"finding-{len(converted) + 1}",
             url=finding["url"],
-            # Preserve the legacy contract until the analyst's verdict policy is defined.
-            is_violation=finding.get("is_violation", True),
+            is_violation=finding['is_violation'],
             location=finding["location"],
             evidence_text=finding['source_text'],
             technique=finding["technique"],

@@ -19,14 +19,16 @@ elements.downloadExtra.disabled = true;
 const response = {
   url: elements.url.value, page_title: 'Fixture', crawled_pages: [elements.url.value],
   findings: [
-    { technique: 'JAMO', selector: 'div#a', location: 'div#a', evidence: 'A' },
-    { technique: 'TRANSPARENT', selector: 'div#b', location: 'div#b', evidence: 'B' },
+    { technique: 'JAMO', selector: 'div#a', location: 'div#a', evidence: 'A', submission_status: 'included',
+      submission_reason: 'Matched promotion', submission_categories: ['GAMBLING'] },
+    { technique: 'TRANSPARENT', selector: 'div#b', location: 'div#b', evidence: 'B', submission_status: 'needs_review',
+      submission_reason: 'No relevant promotion', submission_categories: [] },
   ],
   content_candidates: [{ category: 'GAMBLING', location: 'p#ad', techniques: [], review_status: 'needs_review' }],
+  submission_policy_version: 'feature-content-policy-v1',
 };
 response.result_json = { meta: { entry_url: response.url }, findings: [
   { id: 'finding-1', technique: 'JAMO', evidence_text: '한글 근거', is_violation: true },
-  { id: 'finding-2', technique: 'TRANSPARENT', evidence_text: 'B', is_violation: true },
 ] };
 response.result_extra_json = { meta: { topic: 'TOPIC', entry_url: response.url }, findings: [
   { id: 'extra-1', technique: 'ETC', extra_finding: 'GAMBLING_PROMOTION_CANDIDATE', evidence_text: '가입 원문' },
@@ -75,6 +77,9 @@ async function run() {
   assert.equal(elements.download.disabled, false);
   assert.equal(elements.analyze.disabled, false);
   assert.equal(JSON.parse(elements.output.textContent).totalFindings, 2);
+  assert.equal(JSON.parse(elements.output.textContent).totalSubmittedFindings, 1);
+  assert.equal(JSON.parse(elements.output.textContent).totalNeedsReviewFindings, 1);
+  assert.equal(JSON.parse(elements.output.textContent).submissionPolicyVersion, 'feature-content-policy-v1');
   for (const [filter, count] of [['JAMO', 1], ['OFFSCREEN', 0], ['TRANSPARENT', 1], ['ALL', 2]]) {
     elements.techniqueFilter.value = filter;
     elements.techniqueFilter.handlers.change();

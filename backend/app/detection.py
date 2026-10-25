@@ -10,6 +10,9 @@ from .location import build_selector
 from .limits import Deadline
 from .rendered import rendered_techniques
 
+HOMOGLYPH_PATTERN = re.compile(r'[а-яА-ЯёЁіІјЈѕЅ\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]')
+JAMO_PATTERN = re.compile(r'[\u1100-\u11ff\u3130-\u318f]')
+
 
 def _build_element_selector(element) -> str:
     return build_selector(element)
@@ -67,9 +70,9 @@ def _matches_technique(element, technique: str) -> bool:
     text = _direct_text(element)
 
     if technique == "HOMOGLYPH":
-        return bool(re.search(r"[а-яА-Я]|[ｅａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ]", text))
+        return bool(HOMOGLYPH_PATTERN.search(text))
     if technique == "JAMO":
-        return bool(re.search(r"[\u1100-\u11FF\u3130-\u318F]", text))
+        return bool(JAMO_PATTERN.search(text))
     if technique == "TRANSPARENT":
         styles = _inline_styles(element)
         if styles.get("color") == "transparent" or styles.get("visibility") == "hidden":

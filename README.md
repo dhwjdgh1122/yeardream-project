@@ -99,7 +99,19 @@ API 예시:
 
 추가 결과는 PDF 13쪽 예시처럼 `technique: ETC`와 `extra_finding`에 `GAMBLING_PROMOTION_CANDIDATE` 또는 `ADULT_CONTENT_PROMOTION_CANDIDATE`를 기록합니다. API의 `result_extra_json`, 서버 파일과 해당 다운로드가 같은 값을 사용합니다. 후보를 확정된 법적 위반으로 변환하지 않으며 추가 결과에는 is_violation을 자동 기재하지 않습니다. 두 제출 파일의 meta.topic은 PDF 표/예시의 `TOPIC`입니다. 제출 evidence_text는 설명·정규화·길이 제한 없이 DOM 원문 텍스트를 보존하고 화면 evidence는 설명용으로 유지합니다.
 
-현재 content-rules-v2는 같은 텍스트 블록 안에서도 문장을 구분하고, 같은 문장 내 도박/성인물 표현과 가까운 가입·이용·시청 유도 표현을 검사합니다. inline 조각·공백·일부 전각/보이지 않는 문자 형태를 정리하며 예방교육·단속 보도·광고 신고/삭제 요청 등 명시적인 정상 문맥은 제외합니다. 별도 문장의 예방 안내는 홍보 후보를 지우지 않으며, 도메인 내부 마침표는 문장 구분자로 취급하지 않습니다. 후보는 검토 대상이며 법적 위반 확정이나 측정된 confidence가 아닙니다. 여러 문장에 걸친 홍보·인용 보도, 구두점 없는 문장, 사전 밖 은어·변형, 이미지·동영상·CSS 문맥에는 미탐·오탐이 남습니다. 기존 result.json의 is_violation 임시 기본값은 변경하지 않았습니다.
+현재 content-rules-v3는 같은 텍스트 블록·문장 안의 도박/성인물 표현과 가입·이용·시청 유도 표현을 검사합니다. 자모 재조합·전각·제한된 닮은꼴 문자·대소문자·공백·일부 zero-width 변형은 판별용으로만 정리하며 제출 근거는 원문으로 유지합니다. 예방교육·단속 보도·광고 신고/삭제 요청 등 명시적인 정상 문맥은 제외합니다. 별도 문장의 예방 안내는 홍보 후보를 지우지 않으며 도메인 내부 마침표는 유지합니다. 여러 문장에 걸친 홍보·인용 보도, 구두점 없는 문장, 사전 밖 은어·변형·이미지에는 미탐·오탐이 남습니다.
+
+## 제출 후보와 검토 대상
+
+feature-content-policy-v1은 위장·은닉 구간이 관련 홍보 주제나 이용 유도 표현의 원문 구간과 겹칠 때만 4종 제출 후보로 포함합니다. 같은 문단의 무관한 숨김 메뉴나 외국어·전각 인사말을 광고 기법으로 연결하지 않습니다. 화면에는 모든 특징과 submission_status/reason을 남기고 제출 후보와 검토 대상 수를 따로 표시합니다.
+
+| 관찰 결과 | 저장·표시 |
+|---|---|
+| 특징과 관련 홍보 구간이 겹침 | included, result.json에 규칙상 is_violation=true |
+| 특징만 있거나 홍보와 무관한 구간 | needs_review, 화면에 보존하고 result.json에서는 제외 |
+| 일반 표시 홍보 후보만 있음 | content_candidates 및 result_extra.json, 필수 기법을 임의로 붙이지 않음 |
+
+기존의 is_violation 기본 true 변환을 제거했습니다. 근거 부족을 false(정상)로 바꾸지도 않습니다. 이 정책은 자동 제출 후보 선택 규칙이며 법적 위반 확정이나 실측 정확도가 아닙니다. 어휘·정규화·문맥을 놓치면 실제 광고도 검토 대상으로 남을 수 있으므로 파일 0건만으로 광고 부재를 판단하지 않습니다. 다운로드는 화면 필터와 관계없이 전체 **선택된 제출 후보**를 저장합니다.
 
 ## 내용 후보 정답 검수와 평가
 
@@ -111,6 +123,8 @@ API 예시:
 ```
 
 새 capture는 4종 기법용 `labels.json`과 독립된 `content-labels.json`을 생성합니다. 이전 capture에는 다음 명령으로 내용 정답 초안을 추가할 수 있습니다. 기존 정답 파일은 덮어쓰지 않습니다.
+
+capture와 evaluate는 submission_assessments·submission_policy_version도 별도로 기록합니다. 보고서의 submission_candidate_count는 제출 선택 건수이며 기존 feature/content 지표를 광고 판정 정확도로 바꾸지는 않습니다. 각 특징의 선택·검토 이유와 정책/정규화 코드 해시를 확인할 수 있습니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -B scripts/validate_site.py init-content-labels .validation/run-001

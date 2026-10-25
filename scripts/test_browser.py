@@ -91,6 +91,14 @@ DOCUMENTS = {
         <iframe id="styled-frame" src="/fixtures/computed-child"></iframe>''',
     "computed-child": '<style>.frame-style{opacity:0}</style><p id="frame-style" class="frame-style">Styled frame</p>',
     "css-rules": '.external {color:transparent}',
+    "policy": '''<style>.policy-hidden{opacity:0}</style>
+        <p id="policy-jamo">ㅋㅏㅈㅣㄴㅗ ㅂㅗㄴㅓㅅㅡ</p>
+        <p id="policy-homoglyph">ｍｅｇａ－ＢＥＴ 첫충 30％ 지급</p>
+        <p id="policy-transparent" class="policy-hidden">카지노 가입 보너스</p>
+        <p id="policy-offscreen" style="font-size:1px">성인영상 무료시청</p>
+        <p id="policy-menu" class="policy-hidden">메뉴 열기</p>
+        <p id="policy-foreign">Привет</p><p id="policy-chat">ㅋㅋ 반가워</p>
+        <p>카지노 가입 보너스. <span id="policy-unrelated" class="policy-hidden">메뉴</span></p>''',
 }
 
 
@@ -163,6 +171,8 @@ def run():
 
                     data = analyze('root')
                     assert len(data['findings']) == 9, data
+                    assert data['result_json']['findings'] == []
+                    assert all(item['submission_status'] == 'needs_review' for item in data['findings'])
                     assert data['warnings'] and '일부 범위 미분석' in page.locator('#status').inner_text()
                     assert json.loads(main.result_path.read_text(encoding='utf-8')) == data['result_json']
                     download_json(data, 'static-partial')
@@ -287,7 +297,7 @@ def run():
                     report = json.loads(path.read_text(encoding='utf-8'))
                     assert report['candidates'] == content['content_candidates']
                     assert report['purpose'] == 'content_candidate_review'
-                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v2'
+                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v3'
                     download_json(content, 'content-four-technique-json')
                     analyze('missing', 502)
                     assert page.locator('#downloadContent').is_disabled()
@@ -352,11 +362,25 @@ def run():
                     replay = evaluate_capture(capture_dir)
                     assert replay['counts'] == dict(tp=9, fp=0, fn=0, tn=5), replay
                     assert replay['metrics']['recall'] == 1
+                    assert replay['submission_candidate_count'] == 1
+                    page.locator('#techniqueFilter').select_option('ALL')
+                    policy = analyze('policy')
+                    assert len(policy['findings']) == 8, policy
+                    assert {item['technique'] for item in policy['result_json']['findings']} == {
+                        'HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN'}
+                    assert len(policy['result_json']['findings']) == 4
+                    assert sum(item['submission_status'] == 'needs_review' for item in policy['findings']) == 4
+                    assert any('ㅋㅏㅈㅣㄴㅗ' in item['evidence_text'] for item in policy['result_json']['findings'])
+                    policy_summary = json.loads(page.locator('#output').inner_text())
+                    assert policy_summary['totalSubmittedFindings'] == 4
+                    assert policy_summary['totalNeedsReviewFindings'] == 4
+                    download_json(policy, 'policy-selected')
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
                     print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')
                     print('Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled')
                     print('Content checks passed: promotion candidates, education exclusion, category filters, separate full download, original result schema')
                     print('Computed styles passed: classes, external CSS, solid background, inherited hiding/font, negative geometry, visible overrides/shadow/stroke, styled iframe, saved offline replay')
+                    print('Submission policy passed: 4 attributed feature promotions, 4 retained review findings, original evidence, separate submitted counts/downloads')
         finally:
             server.should_exit = True
             thread.join(timeout=10)

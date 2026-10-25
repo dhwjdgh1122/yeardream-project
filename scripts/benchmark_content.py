@@ -29,6 +29,7 @@ def benchmark():
     return dict(scope=dataset['scope'], policy_version=POLICY_VERSION,
                 dataset_sha256=hashlib.sha256(raw).hexdigest(),
                 detector_sha256=hashlib.sha256((ROOT / 'backend/app/content.py').read_bytes()).hexdigest(),
+                normalizer_sha256=hashlib.sha256((ROOT / 'backend/app/textnorm.py').read_bytes()).hexdigest(),
                 case_count=len(details), passed_cases=sum(item['passed'] for item in details), counts=counts,
                 metrics=dict(precision=tp / (tp + fp) if tp + fp else None,
                              recall=tp / (tp + fn) if tp + fn else None,

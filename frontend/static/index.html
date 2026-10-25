@@ -87,6 +87,7 @@
         </p>
         <p>JSON 다운로드는 4종 위장·은닉 결과, 광고 후보 다운로드는 내용 판별 결과를 저장합니다. 화면 필터와 관계없이 전체 결과를 저장합니다. 광고 후보는 검토가 필요하며 부분 분석 안내도 확인해 주세요.</p>
         <p>추가 탐지 결과 다운로드는 광고 후보를 result_extra.json으로 저장합니다. 후보 검출은 불법 여부의 확정 판정이 아닙니다.</p>
+        <p>4종 제출 결과에는 관련 홍보 표현이 확인된 후보만 포함합니다. 근거가 부족한 특징은 검토 대상으로 화면에 남으며, 정상으로 확정한 결과가 아닙니다.</p>
         <div class="result" id="output">결과가 여기에 표시됩니다.</div>
       </div>
     </div>
@@ -115,6 +116,9 @@
           pageTitle: data.page_title || 'N/A',
           totalPages: data.crawled_pages.length,
           totalFindings: findings.length,
+          totalSubmittedFindings: findings.filter((item) => item.submission_status === 'included').length,
+          totalNeedsReviewFindings: findings.filter((item) => item.submission_status !== 'included').length,
+          submissionPolicyVersion: data.submission_policy_version || null,
           totalContentCandidates: contentCandidates.length,
           contentCandidates,
           warnings: data.warnings || [],
@@ -123,6 +127,9 @@
             selector: item.selector,
             location: item.location,
             evidence: item.evidence,
+            submissionStatus: item.submission_status || 'needs_review',
+            submissionReason: item.submission_reason || '',
+            submissionCategories: item.submission_categories || [],
             confidence: item.confidence
           }))
         };
@@ -165,7 +172,7 @@
           downloadContentButton.disabled = false;
           downloadExtraButton.disabled = !data.result_extra_json;
           const completion = data.warnings?.length ? '분석 완료(일부 범위 미분석)' : '분석 완료';
-          status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개`;
+          status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개, 4종 제출 후보 ${(data.result_json?.findings || []).length}개`;
         } catch (error) {
           output.textContent = error.message;
           status.textContent = '오류 발생';
@@ -202,6 +209,7 @@
         downloadJson({
           purpose: 'content_candidate_review',
           policy_version: lastAnalysis.content_policy_version || null,
+          submission_policy_version: lastAnalysis.submission_policy_version || null,
           meta: lastAnalysis.result_json.meta,
           collection_mode: lastAnalysis.collection_mode || 'static',
           warnings: lastAnalysis.warnings || [],

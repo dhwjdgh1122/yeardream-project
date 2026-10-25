@@ -15,6 +15,7 @@ from .models import AnalyzeRequest, AnalysisResponse, Finding
 from .limits import AnalysisTimeout, Deadline
 from .browser import BrowserRenderer, BrowserUnavailable
 from .content import POLICY_VERSION, detect_content
+from .policy import POLICY_VERSION as SUBMISSION_POLICY_VERSION, assess_findings
 
 app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
 
@@ -77,6 +78,7 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             try:
                 page_findings = detect_page(page, deadline=deadline)
                 page_content = detect_content(page, feature_findings=page_findings, deadline=deadline)
+                page_findings = assess_findings(page_findings, page_content, deadline=deadline)
             except AnalysisTimeout:
                 if not analyzed_pages:
                     raise HTTPException(status_code=504, detail="분석 시간 제한에 도달했습니다.")
@@ -100,19 +102,13 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
                     url=detected["url"],
                     evidence=detected["evidence"],
                     confidence=float(detected["confidence"]),
+                    submission_status=detected['submission_status'],
+                    submission_reason=detected['submission_reason'],
+                    submission_categories=detected['submission_categories'],
                 )
                 findings.append(finding)
-                raw_findings.append(
-                    {
-                        "technique": detected["technique"],
-                        "selector": detected["selector"],
-                        "location": detected["location"],
-                        "url": detected["url"],
-                        "evidence": detected["evidence"],
-                        "source_text": detected["source_text"],
-                        "confidence": float(detected["confidence"]),
-                    }
-                )
+                if detected['submission_status'] == 'included':
+                    raw_findings.append(detected)
 
         finished_at = datetime.now(timezone.utc).isoformat()
         result_json = build_result_json(payload.url, raw_findings, started_at=started_at, finished_at=finished_at)
@@ -130,6 +126,7 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             findings=findings,
             content_candidates=content_candidates,
             content_policy_version=POLICY_VERSION,
+            submission_policy_version=SUBMISSION_POLICY_VERSION,
             result_json=result_json,
             result_extra_json=result_extra_json,
             warnings=list(dict.fromkeys(warnings)),
