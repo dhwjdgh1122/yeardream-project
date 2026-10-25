@@ -21,6 +21,7 @@ from .models import AnalyzeRequest
 from .location import build_selector
 from .content import POLICY_VERSION, detect_content
 from .comparison import evaluation_url_key
+from .rendered import POLICY_VERSION as RENDERED_POLICY_VERSION
 
 TECHNIQUES = ('HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN')
 Technique = Literal['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN']
@@ -140,7 +141,8 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
     predictions = list({_key(item): item for item in predictions}.values())
     root = Path(__file__).resolve().parents[2]
     sources = ['backend/app/detection.py', 'backend/app/content.py', 'backend/app/location.py',
-               'backend/app/comparison.py', 'constraints-windows-py314.txt']
+               'backend/app/comparison.py', 'backend/app/browser.py', 'backend/app/rendered.py', 'backend/app/rendered_snapshot.js',
+               'constraints-windows-py314.txt']
     capture = {
         'schema_version': 1, 'purpose': 'feature_detection',
         'captured_at': datetime.now(timezone.utc).isoformat(),
@@ -150,6 +152,7 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
         'source_hashes': {name: _hash((root / name).read_bytes()) for name in sources},
         'documents': documents, 'predictions': predictions, 'content_candidates': content_candidates,
         'content_policy_version': POLICY_VERSION, 'warnings': warnings,
+        'rendered_policy_version': RENDERED_POLICY_VERSION,
     }
     _write(output / 'capture.json', capture)
     labels = Labels(capture_sha256=_hash((output / 'capture.json').read_bytes()),
@@ -282,6 +285,12 @@ def evaluate_capture(directory, *, kind='feature'):
         'labels_sha256': _hash(labels_raw),
         'evaluator_sha256': _hash(Path(__file__).read_bytes()),
         'url_comparison_sha256': _hash(Path(__file__).with_name('comparison.py').read_bytes()),
+        'rendered_detector_sha256': _hash(Path(__file__).with_name('rendered.py').read_bytes()),
+        'rendered_policy_version': RENDERED_POLICY_VERSION,
+        'observation_basis': {
+            'rendered_documents': sum('rendered_style' in record for record in capture['documents'] if 'error' not in record),
+            'static_documents': sum('rendered_style' not in record for record in capture['documents'] if 'error' not in record),
+        },
         'request': capture['request'],
         'policy': labels.policy, 'review_complete': labels.complete,
         'collection_warnings': capture['warnings'], 'document_count': len(documents),

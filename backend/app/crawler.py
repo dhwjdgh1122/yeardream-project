@@ -270,6 +270,7 @@ def crawl_site(seed_url: str, max_pages: int = 10, max_iframe_depth: int = 3,
                 "html": html,
                 "text": " ".join(soup.stripped_strings)[:2500],
                 "collection_warnings": document.get('collection_warnings', []),
+                **({'rendered_style': document['rendered_style']} if 'rendered_style' in document else {}),
             }
         )
 

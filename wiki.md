@@ -104,7 +104,7 @@ URL 검증·정규화 → Queue → 페이지 수집 → DOM 분석 → 하위 �
 
 공유 시간은 monotonic clock으로 측정하고 요청 시작·응답 스트림 청크·수집 반복·탐지 요소 처리 사이에서 확인합니다. 이미 진행 중인 I/O·파싱·selector 탐색을 즉시 중단하는 강제 종료가 아니므로 제한을 일부 초과할 수 있습니다. 최종 결과 변환·직렬화·파일 저장은 중단 결과를 돌려주기 위한 마무리이며 이 예산으로 강제 종료하지 않습니다. 공식 30분 조건의 엄격한 준수를 검증한 기능으로 취급하지 않습니다.
 
-HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 콘텐츠를 구분해 검증합니다. 동적 모드는 제한된 관찰 시점까지 생성된 내용만 지원합니다. 자동 스크롤·클릭·로그인·Shadow DOM·computed style 판정은 미지원입니다. DOM 수집 후 변동이 있으면 selector 재식별이 실패할 수 있으며 실제 사이트 정확도는 별도 검증합니다. 개별 프레임 실패가 전체 탐색을 중단시키지 않게 하되 전체 수집 실패는 정상 0건과 구분합니다.
+HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 콘텐츠를 구분해 검증합니다. 동적 모드는 제한된 관찰 시점까지 생성된 DOM·계산 스타일을 지원합니다. 자동 스크롤·클릭·로그인·Shadow DOM은 미지원입니다. DOM 수집 후 변동이 있으면 selector 재식별이 실패할 수 있으며 실제 사이트 정확도는 별도 검증합니다. 개별 프레임 실패가 전체 탐색을 중단시키지 않게 하되 전체 수집 실패는 정상 0건과 구분합니다.
 
 ## 5. 탐지 기준
 
@@ -133,7 +133,13 @@ PDF 5쪽은 font-size 0~1px, position:absolute; left:-9999px, display:none을 OF
 
 단순 inline 선언의 중복·!important 우선순위를 처리하며 opacity는 정확히 0인 경우와 조상 opacity:0을 확인합니다. 클래스 이름만으로 투명 여부를 판정하지 않습니다. OFFSCREEN 후보는 display:none, 0~1px 글꼴, absolute/fixed와 음수 left/top(px) 조합입니다. 단독 absolute·overflow:hidden은 제외합니다. 음수 좌표의 실제 화면 이탈 여부와 유형 분류는 추가 검증이 필요합니다.
 
-스타일시트·computed style·전체 상속·조상 display:none 전파·뷰포트 계산·노드 간 문자 조합은 아직 지원 범위로 검증하지 않았습니다. 사례·정답·한계는 [테스트 사례 설명](tests/fixtures/detection/README.md)에 기록합니다. 이는 개발자 합성 데이터의 특징 검증이며 광고 여부를 확정한 정답이 아닙니다.
+위 inline 규칙은 정적 모드 및 스타일 관찰값 없는 과거 저장본의 기준입니다. 새 동적 모드는 rendered_snapshot.js의 단일 동기 호출에서 HTML과 직접 텍스트를 가진 HTML 요소별 관찰값을 함께 수집합니다. 문서 안 요소는 순차 관찰하며 프레임 트리 전체의 동일 시점 고정이나 애니메이션·이후 DOM 변경을 보장하지 않습니다. DOM을 수정하지 않고 구조 선택자·원문·계산 스타일·좌표를 저장합니다. 처리 반복에 공유 시간 예산을 적용하되 브라우저 내부 연산의 즉시 강제 종료는 아닙니다. API 사용 기준은 [getComputedStyle](https://developer.mozilla.org/en-US/docs/Web/API/Window/getComputedStyle)과 [getBoundingClientRect](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect) 문서를 참조합니다.
+
+rendered.py의 rendered-style-rules-v1은 zero opacity·계산된 visibility·투명 글자·동일 불투명 RGB 단색 배경을 TRANSPARENT로, 조상 포함 display:none·상속된 0~1px 글꼴·양의 크기를 가진 요소의 전체가 문서 왼쪽/위쪽 음수 영역에 있는 배치를 OFFSCREEN으로 판단합니다. 좌표에 스크롤을 더해 문서 기준으로 비교하며 일반적인 스크롤 아래 콘텐츠와 일부 보이는 음수 배치는 제외합니다. 그림자/윤곽선이 있으면 글자색만으로 투명 판정하지 않습니다. 관찰값이 있으면 CSS 기법에서 inline 후보보다 우선하여 !important·실제 레이아웃을 반영합니다. 관찰 대상이 아닌 요소에는 CSS 후보를 임의 보충하지 않습니다.
+
+배경 이미지·그라데이션·반투명 합성·표준 RGB 이외 색상 계산은 추측하지 않습니다. 가림·clip·양의 방향 화면 밖·SVG·가상 요소·Shadow DOM·프레임 경계 밖 iframe 요소의 은닉 전파는 미지원입니다. HOMOGLYPH/JAMO와 노드 간 문자 조합 범위는 이번 작업에서 바꾸지 않았습니다. 합성 특징 검증은 광고 여부를 확정한 정답이 아닙니다.
+
+관찰값은 capture.json의 문서별 rendered_style(schema_version=1)에 보존합니다. 현재 parser가 선택자를 정확히 한 요소로 해석하고 원문이 일치하는지 검증하며 중복·잘못된 경로·원문 불일치는 평가를 거부합니다. 저장 HTML과 관찰값이 함께 labels의 capture 해시에 연결됩니다. 보고서는 렌더링 판정 코드 해시·정책 버전 및 observation_basis를 기록합니다. 과거 browser 캡처라도 관찰값이 없으면 정적 문서 수로 집계해 현재 computed style 평가로 오해하지 않게 합니다. 정적 사례의 한계는 [사례 설명](tests/fixtures/detection/README.md)을 따릅니다.
 
 ## 6. URL·location 규격
 

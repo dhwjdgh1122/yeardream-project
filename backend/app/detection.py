@@ -2,11 +2,13 @@ import re
 from typing import Dict, List
 
 from bs4 import BeautifulSoup, Comment, NavigableString
+from soupsieve import SelectorSyntaxError
 
 # Keep the existing import used by scripts/tests while separating result mapping.
 from .result import build_result_json
 from .location import build_selector
 from .limits import Deadline
+from .rendered import rendered_techniques
 
 
 def _build_element_selector(element) -> str:
@@ -89,6 +91,26 @@ def detect_page(page: Dict[str, object], *, deadline: Deadline | None = None) ->
     html = str(page.get("html", ""))
     # HTML5 tree construction includes browser repairs such as implicit tbody.
     soup = BeautifulSoup(html, "html5lib")
+    rendered = {}
+    if 'rendered_style' in page:
+        snapshot = page['rendered_style']
+        if snapshot.get('schema_version') != 1:
+            raise ValueError('Unsupported rendered style schema')
+        for observation in snapshot['observations']:
+            if deadline:
+                deadline.check()
+            try:
+                matches = soup.select(observation['selector'])
+            except SelectorSyntaxError as error:
+                raise ValueError('Invalid rendered style selector') from error
+            if len(matches) != 1:
+                raise ValueError('Rendered style selector must identify one saved element')
+            element = matches[0]
+            original = ''.join(str(child) for child in element.children
+                               if isinstance(child, NavigableString) and not isinstance(child, Comment))
+            if original != observation['source_text'] or id(element) in rendered:
+                raise ValueError('Rendered style text mismatch or duplicate element')
+            rendered[id(element)] = rendered_techniques(observation)
 
     for technique, explanation in [
         ("HOMOGLYPH", "유사 문자 기반 위장 문자열이 감지되었습니다."),
@@ -105,7 +127,11 @@ def detect_page(page: Dict[str, object], *, deadline: Deadline | None = None) ->
             text = _direct_text(element)
             if not text:
                 continue
-            if not _matches_technique(element, technique):
+            if technique in {'TRANSPARENT', 'OFFSCREEN'} and 'rendered_style' in page:
+                matched = technique in rendered.get(id(element), set())
+            else:
+                matched = _matches_technique(element, technique)
+            if not matched:
                 continue
             selector = _build_element_selector(element)
             findings.append(

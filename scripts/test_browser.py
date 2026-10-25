@@ -2,6 +2,7 @@
 
 import json
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -15,6 +16,7 @@ from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.app import main
+from backend.app.evaluation import evaluate_capture
 
 
 DOCUMENTS = {
@@ -67,6 +69,28 @@ DOCUMENTS = {
     "content": '''<p id="gamble">토토사이트 신규가입 보너스 안내</p>
         <p id="adult">야동티비 무료시청 플랫폼</p>
         <p id="education">도박 예방교육: 토토사이트 가입 보너스 광고를 주의하세요.</p>''',
+    "computed": '''<!doctype html><link rel="stylesheet" href="/fixtures/css-rules"><style>
+        .opacity {opacity:0} .same {color:rgb(12,34,56);background:rgb(12,34,56)}
+        .none {display:none} .tiny {font-size:1px}
+        .outside {position:absolute;left:-9999px;width:100px}
+        .alpha {color:rgba(1,2,3,0)} .hidden {visibility:hidden}
+        #overridden {opacity:1 !important}
+        </style><p id="opacity" class="opacity">Class opacity</p>
+        <p id="same" class="same">카지노 가입 보너스</p>
+        <div class="none"><p id="display-child">Hidden parent</p></div>
+        <div class="tiny"><p id="tiny-child">Small inherited font</p></div>
+        <p id="outside" class="outside">Negative rectangle</p>
+        <p id="alpha" class="alpha">Transparent RGB</p>
+        <div class="hidden"><p id="hidden-child">Inherited visibility</p></div>
+        <p id="external" class="external">External stylesheet</p>
+        <p id="overridden" style="opacity:0">Visible override</p>
+        <p id="partial" style="position:absolute;left:-1px;width:200px">Partly visible</p>
+        <p id="below" style="position:absolute;top:3000px">Below fold</p>
+        <p id="shadow" style="color:white;background:white;text-shadow:1px 1px black">Visible shadow</p>
+        <p id="stroke" style="color:transparent;-webkit-text-stroke:1px black">Visible stroke</p>
+        <iframe id="styled-frame" src="/fixtures/computed-child"></iframe>''',
+    "computed-child": '<style>.frame-style{opacity:0}</style><p id="frame-style" class="frame-style">Styled frame</p>',
+    "css-rules": '.external {color:transparent}',
 }
 
 
@@ -75,7 +99,8 @@ def run():
 
     @fixture_app.get('/fixtures/{name}', response_class=HTMLResponse)
     def fixture(name: str):
-        return HTMLResponse(DOCUMENTS[name]) if name in DOCUMENTS else HTMLResponse('', status_code=404)
+        return (HTMLResponse(DOCUMENTS[name], media_type='text/css' if name == 'css-rules' else 'text/html')
+                if name in DOCUMENTS else HTMLResponse('', status_code=404))
 
     fixture_app.mount('/', main.app)
     sock = socket.socket()
@@ -268,10 +293,70 @@ def run():
                     assert page.locator('#downloadContent').is_disabled()
                     assert page.locator('#downloadExtra').is_disabled()
                     assert not errors, errors
+                    static_computed = analyze('computed')
+                    assert {(item['location'], item['technique']) for item in static_computed['findings']} == {
+                        ('p#overridden', 'TRANSPARENT'), ('p#partial', 'OFFSCREEN'), ('p#stroke', 'TRANSPARENT')}
+                    page.locator('#collectionMode').select_option('browser')
+                    computed = analyze('computed')
+                    expected = {
+                        ('p#' + name, technique) for name, technique in [
+                            ('opacity', 'TRANSPARENT'), ('same', 'TRANSPARENT'),
+                            ('display-child', 'OFFSCREEN'), ('tiny-child', 'OFFSCREEN'),
+                            ('outside', 'OFFSCREEN'), ('alpha', 'TRANSPARENT'),
+                            ('hidden-child', 'TRANSPARENT'), ('external', 'TRANSPARENT')]
+                    } | {('iframe#styled-frame >>> p#frame-style', 'TRANSPARENT')}
+                    styled_target = browser.new_page()
+                    styled_target.goto(base + '/fixtures/computed')
+
+                    def resolved_ids(location):
+                        context = styled_target.main_frame
+                        identities = []
+                        segments = location.split(' >>> ')
+                        for index, selector in enumerate(segments):
+                            element = context.locator(selector)
+                            assert element.count() == 1, location
+                            identities.append(element.get_attribute('id'))
+                            if index < len(segments) - 1:
+                                context = element.element_handle().content_frame()
+                        return tuple(identities)
+
+                    actual = {(resolved_ids(item['location']), item['technique']) for item in computed['findings']}
+                    expected_ids = {(resolved_ids(location), technique) for location, technique in expected}
+                    assert actual == expected_ids and len(computed['findings']) == len(expected), (actual, expected_ids)
+                    styled_target.close()
+                    assert computed['content_candidates'][0]['techniques'] == ['TRANSPARENT']
+                    download_json(computed, 'computed-styles')
+                    # Save styles with HTML and replay offline using independently specified labels.
+                    capture_dir = Path(temporary) / 'computed-capture'
+                    captured = subprocess.run(
+                        [sys.executable, '-B', 'scripts/validate_site.py', 'capture',
+                         base + '/fixtures/computed', '--output', str(capture_dir), '--mode', 'browser'],
+                        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                        timeout=30, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                    )
+                    assert captured.returncode == 0, captured.stderr
+                    labels_path = capture_dir / 'labels.json'
+                    labels = json.loads(labels_path.read_bytes())
+                    labels.update(complete=True, policy='Synthetic computed-style features only, not ad verdicts')
+                    labels['labels'] = [dict(url=base + '/fixtures/computed', location=location,
+                                             technique=technique, expected=True, reviewed=True,
+                                             reason='Independent synthetic fixture expectation')
+                                        for location, technique in sorted(expected)]
+                    labels['labels'].extend(dict(url=base + '/fixtures/computed', location='#' + name,
+                                                  technique=technique, expected=False, reviewed=True,
+                                                  reason='Synthetic fixture remains visible')
+                                             for name, technique in [('overridden', 'TRANSPARENT'),
+                                                ('partial', 'OFFSCREEN'), ('below', 'OFFSCREEN'),
+                                                ('shadow', 'TRANSPARENT'), ('stroke', 'TRANSPARENT')])
+                    labels_path.write_text(json.dumps(labels), encoding='utf-8')
+                    replay = evaluate_capture(capture_dir)
+                    assert replay['counts'] == dict(tp=9, fp=0, fn=0, tn=5), replay
+                    assert replay['metrics']['recall'] == 1
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
                     print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')
                     print('Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled')
                     print('Content checks passed: promotion candidates, education exclusion, category filters, separate full download, original result schema')
+                    print('Computed styles passed: classes, external CSS, solid background, inherited hiding/font, negative geometry, visible overrides/shadow/stroke, styled iframe, saved offline replay')
         finally:
             server.should_exit = True
             thread.join(timeout=10)

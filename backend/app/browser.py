@@ -1,5 +1,7 @@
 """Optional, request-scoped Edge rendering; static analysis needs no Playwright."""
 
+from pathlib import Path
+
 from .limits import AnalysisTimeout, Deadline
 
 
@@ -75,13 +77,14 @@ class BrowserRenderer:
             raise RuntimeError('렌더링 중 iframe이 제거되었습니다.')
         if self.statuses.get(frame, 200) >= 400:
             raise RuntimeError(f'브라우저 문서 HTTP {self.statuses[frame]}')
-        html = frame.content()
+        snapshot = frame.evaluate(Path(__file__).with_name('rendered_snapshot.js').read_text(encoding='utf-8'),
+                                  self.deadline.remaining() * 1000)
         self.deadline.check()
         current_url = frame.url
         if current_url not in {'about:blank', 'about:srcdoc'}:
             url = current_url
         return {
-            'html': html, 'url': url, 'browser_frame': frame,
+            **snapshot, 'url': url, 'browser_frame': frame,
             'collection_warnings': [f'페이지 JavaScript 오류: {error}' for error in self.errors],
         }
 
