@@ -38,6 +38,12 @@ Python 없이 실행할 수 있는 폴더형 패키지를 빌드합니다. 빌�
 
 이전 빌드를 덮어쓰지 않도록 새 출력 경로를 지정합니다. ZIP 경로는 `dist/release-01/YearDream-windows-x64.zip`입니다. [빌드 설명서](docs/BUILD_MANUAL.md)와 [사용자 설명서](docs/USER_MANUAL.md)를 참조합니다. 소스에서 같은 시작 프로그램을 사용하려면 `.venv\Scripts\python.exe -B run_app.py`로 실행합니다. 별도 Windows PC의 독립 실행 검증과 실제 사이트 정확도 측정은 남아 있습니다.
 
+## 제출 후보 묶음
+
+`scripts/package_submission.py`는 검증된 실행 폴더·전체 소스 ZIP·현재 설명서·서류 안내·검증 기록을 한 폴더/ZIP으로 묶습니다. 분석 코드와 실행 파일 빌드 입력을 대조하고 source commit ID/파일 해시를 기록합니다. 실제 수집 데이터·가상환경·기존 결과 파일은 제외합니다. [빌드 설명서의 명령](docs/BUILD_MANUAL.md), [제출 점검표](docs/SUBMISSION_CHECKLIST.md), [다른 PC 점검표](docs/OTHER_PC_CHECKLIST.md)를 따릅니다.
+
+서류 작성·서명·별도 PC 검증·실제 접수 확인이 남아 있어 제출 후보 상태로 표시하며 자동으로 접수하지 않습니다. 전체 소스와 설명서가 포함된 것이 전체 탐지 정확도나 공모전 제출 완료를 뜻하지는 않습니다.
+
 ## 문서 안내
 
 | 문서 | 관리하는 기준 |
