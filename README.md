@@ -14,22 +14,23 @@ URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe�
 | [project.md](project.md) | 확인 날짜, 현재 상태, 검증 근거, 문제, 다음 작업 |
 | [project-guide.md](project-guide.md) | 작은 단위 개발, 설명·검증·보고 방식 |
 
-요구사항과 설계는목표 기준이며 구현 완료를 뜻하지 않습니다. 실제 상태는 `project.md`를 확인합니다. 공모전 공식 모집요강·출력 스키마는 아직 원문 대조 전이며, 확보되면 최우선으로 적용합니다.
+요구사항과 설계는 목표 기준이며 구현 완료를 뜻하지 않습니다. 실제 상태는 `project.md`를 확인합니다. 공모전 공식 모집요강·출력 스키마는 아직 원문 대조 전이며, 확보되면 최우선으로 적용합니다.
 
 ## 구성과 현재 상태
 
-Python, FastAPI, Uvicorn, httpx, BeautifulSoup4, html5lib 및 HTML/JavaScript를 사용합니다. HTML5 파싱으로 브라우저의 tbody 삽입 등을 반영합니다. 선택 가능한 동적 분석은 Playwright와 Microsoft Edge를 사용합니다. Python 지원 버전은 추가 검증 후 확정합니다. 상세 구조는 [wiki.md](wiki.md)를 참조합니다.
+Python, FastAPI, Uvicorn, httpx, BeautifulSoup4, html5lib 및 HTML/JavaScript를 사용합니다. HTML5 파싱으로 브라우저의 tbody 삽입 등을 반영합니다. 선택 가능한 동적 분석은 Playwright와 Microsoft Edge를 사용합니다. 설치·검증 기준은 **Windows 11 x64 / CPython 3.14.6**이며 다른 Python·OS 조합은 미검증입니다. 상세 구조는 [wiki.md](wiki.md)를 참조합니다.
 
-최신 검증 결과는 [project.md](project.md)에서 관리합니다. 고유 selector·중첩/반복 iframe 경로·API/JSON 위치 보존에 더해 링크 깊이·수집/탐지 공유 시간 예산을 구현했습니다. 로컬 합성 페이지의 실제 Edge 검사로 위치 재식별과 UI 흐름을 확인했습니다. 실제 사이트·광고 판정 정확도와 requirements.txt의 고정 버전 환경은 아직 확인하지 않았습니다.
+최신 검증 결과는 [project.md](project.md)에서 관리합니다. 고유 selector·중첩/반복 iframe 경로·API/JSON 위치 보존에 더해 링크 깊이·수집/탐지 공유 시간 예산을 구현했습니다. 새 가상환경의 고정 의존성으로 Python 테스트·서버 시작·실제 Edge의 정적/동적 분석·다운로드를 확인했습니다. 실제 사이트·광고 판정 정확도 검증은 남아 있습니다.
 
 ## 설치 및 실행
 
-프로젝트 루트에서 PowerShell로 실행합니다.
+CPython 3.14.6(64비트)을 설치하고 프로젝트 루트에서 PowerShell로 실행합니다. `python --version`으로 사용할 버전을 먼저 확인합니다.
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements.txt
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
 브라우저 주소: http://127.0.0.1:8000
@@ -38,12 +39,28 @@ python -m venv .venv
 
 `python` 명령이 실행되지 않으면 설치된 Python 실행 파일의 전체 경로로 가상환경을 생성합니다. 개인 PC의 절대 경로는 공통 절차에 고정하지 않습니다. 위 명령은 가상환경 활성화 없이 사용할 수 있습니다.
 
+서버 종료는 해당 터미널에서 `Ctrl+C`를 누릅니다. `.venv`는 로컬 실행 환경이며 Git에 포함하지 않습니다.
+
+| 설치 파일 | 포함 범위 |
+|---|---|
+| requirements.txt | 기본 분석·API 실행 |
+| requirements-browser.txt | 기본 실행 + 동적 분석용 Playwright |
+| requirements-dev.txt | 동적 분석 환경 + pytest·전체 검증 |
+
+모든 설치 경로는 `constraints-windows-py314.txt`의 하위 의존성 고정 버전을 공유합니다. constraints는 버전만 제한하므로 기본 설치 시 pytest·Playwright를 추가하지 않습니다. 기준 pip는 26.1.2입니다. 기존의 Pydantic 2.9.2 조합은 Python 3.14용 pydantic-core 휠 설치에서 실패해 검증된 버전으로 갱신했습니다.
+
+기동 절차만 자동 확인하려면 다음 명령을 실행합니다. 임시 포트에서 서버를 열어 health·화면·OpenAPI·잘못된 입력 거부를 확인하고 종료합니다. 외부 사이트 분석이나 기존 result.json 변경은 하지 않습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -B scripts/smoke_test.py
+```
+
 ## 동적 페이지 분석
 
 기본 분석은 HTTP 응답 HTML을 사용합니다. JavaScript가 본문·댓글·iframe을 생성하는 페이지는 화면의 **동적 페이지 분석**을 선택합니다. 이 모드는 서버 PC에 Microsoft Edge와 다음 선택 의존성이 필요합니다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-browser.txt
+.\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-browser.txt
 ```
 
 별도의 Playwright Chromium 다운로드는 필요하지 않습니다. 설치된 Edge를 headless로 실행하며 개인 브라우저의 로그인·프로필을 사용하지 않습니다. 설치·실행이 불가능하면 HTTP 503으로 안내하고 기존 결과 파일을 보존합니다. 기본 분석에는 Playwright가 필요하지 않습니다.
@@ -76,10 +93,11 @@ API 예시:
 
 ## 테스트
 
-현재 `requirements.txt`에 pytest가 없어 별도로 설치합니다.
+전체 개발·검증 패키지를 설치합니다. 실제 브라우저 검사는 설치된 Microsoft Edge가 필요합니다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install pytest
+.\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
@@ -94,8 +112,9 @@ node --preserve-symlinks-main --preserve-symlinks scripts/test_frontend.cjs
 실제 브라우저 검사는 Windows의 설치된 Microsoft Edge와 Playwright를 사용합니다. 기본 분석 검증과 동적 분석 검증을 함께 실행합니다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-browser.txt
 .\.venv\Scripts\python.exe -B scripts/test_browser.py
 ```
 
 로컬 임시 서버를 열어 표·특수문자 ID·반복/중첩 iframe·srcdoc 위치, UI 필터·부분 결과·실패 복구·정상 0건을 검사합니다. JS 생성 본문·fetch 댓글·링크·프레임의 기본 분석 0건과 동적 분석 11건, 위치·파일 일치·502/504 파일 보존도 확인합니다. 실제 다운로드의 파일명·UTF-8·API 결과 일치·필터 독립성·부분/빈 결과·화면별 결과 보존을 확인합니다. 결과는 임시 디렉터리로 격리하고 서버와 브라우저를 종료합니다. 외부 사이트 정확도 검사와는 별도입니다.
+
+2026-10-25 재현 환경은 Python 3.14.6·pip 26.1.2·Edge 156.0.4314.42·Node 20.12.2입니다. Edge는 별도 설치 앱이므로 버전이 바뀌면 브라우저 검사를 다시 확인합니다. 버전 변경 시 격리 환경의 설치·pip check·Python·Node·브라우저·기동 검증을 마친 뒤 requirements와 constraints를 함께 갱신합니다.

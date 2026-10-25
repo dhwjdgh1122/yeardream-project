@@ -26,7 +26,7 @@
 
 ## 3. 현재 요약
 
-사용자 혼자 구현·탐지 기준·데이터·검증을 모두 담당합니다. 기본/동적 분석에 이어 제출용 JSON 다운로드를 추가했습니다. 화면 필터와 관계없이 해당 화면의 전체 결과를 저장하며 기본·동적·부분·0건 결과를 검증했습니다. 최신 검증은 16절의 Python 66개 통과 및 Node·Edge 검사입니다. 실제 사이트·광고 판정 정확도·computed style 판정·고정 의존성 환경 재현·엄격한 시간 강제 종료 검증은 남아 있습니다.
+사용자 혼자 구현·탐지 기준·데이터·검증을 모두 담당합니다. 기본/동적 분석·JSON 다운로드에 이어 Windows 11 x64·Python 3.14.6의 새 가상환경에서 고정 의존성을 재현했습니다. 설치 문제를 수정하고 하위 의존성 31개를 고정했습니다. 최신 검증은 17절의 Python 66개 통과, pip check, Node·Edge·실제 Uvicorn 기동 검사입니다. 실제 사이트·광고 판정 정확도·computed style 판정·엄격한 시간 강제 종료 검증은 남아 있습니다.
 
 ## 4. 기능별 현황
 
@@ -45,7 +45,7 @@
 | 한도·실패 구분 | FR-037, FR-039 | 검증 통과(부분) | 문서 수·링크 깊이·프레임 깊이·공유 시간 예산, 전체 실패502/시간 초과504/부분 경고 검증. 즉시 강제 종료는 아님 |
 | 동적 콘텐츠 | FR-040 | 검증 통과(부분) | 선택적 browser 모드에서 JS 본문·fetch 댓글·링크·프레임 수집을 로컬 합성 페이지로 검증. 실제 사이트·클릭/스크롤·Shadow DOM·computed style은 미검증/미지원 |
 
-NFR-001~004는 아직 검증하지 않았습니다. 평가 조건 원문 대조·패키징·실제 환경 검증이 필요합니다. 표의 FR 묶음은 요약이며 개별 통과 판정을 뜻하지 않습니다.
+NFR-001은 Windows 11 x64의 설치·시작·로컬 합성 분석을 부분 검증했습니다. GPU 없는 별도 PC와 공식 평가환경 조건은 미확인입니다. NFR-002~004는 평가 조건 원문 대조·시간·패키징 검증이 필요합니다. 표의 FR 묶음은 요약이며 개별 통과 판정을 뜻하지 않습니다.
 
 ## 5. 최초 점검 근거(복구 전 기록)
 
@@ -182,14 +182,14 @@ README·wiki·이 문서를 갱신했습니다. 기존 result.json·requirements
 
 ## 11. 다음 작업
 
-1. 실행 흐름 복구: 위 범위의 자동 검증 통과. 사용자 화면 확인 및 고정 의존성 환경 재현은 남아 있음.
+1. 실행 흐름 복구: 자동 검증 및 새 고정 의존성 환경의 설치·CLI 기동·로컬 Edge 흐름 통과. 다른 PC에서의 재현은 남아 있음.
 2. 기준 테스트: 개발자 합성 특징·경계 사례 자동 검증 통과. 사용자의 광고 판정 기준·실제 정답 데이터 검수는 남아 있음.
 3. 위치·결과: 정적 DOM 및 로컬 Edge의 표·프레임 경로 재식별·API/파일 일치 통과. 실제 사이트 재식별은 남아 있음.
 4. 수집: 한도·공유 시간 예산·실패 기본 검증 및 로컬 동적 본문/댓글/프레임 검증 완료. 실제 게시글/댓글·computed style·엄격한 시간 중단 검증은 필요.
 5. 실제 사이트: 허용 범위·오탐·미탐·근거·상태·다운로드 검증.
 6. 평가·제출: 공식 원문 대조, 실제 Windows·시간 제한·배포 산출물 확인.
 
-한도·Git 연결·로컬 브라우저 검증·선택적 동적 수집·JSON 다운로드 작업은 완료했습니다. 다음 우선순위는 고정 의존성 환경 재현과 실행 절차 검증입니다. 이후 실제 사이트의 정답 검수·정확도 확인이 필요합니다. 공식 원문 미확인은 별도로 관리합니다. Git 연결은 13절, 브라우저 검증은 14절, 동적 수집은 15절, 다운로드는 16절에 기록합니다.
+한도·Git 연결·로컬 브라우저 검증·동적 수집·JSON 다운로드·고정 의존성 재현 작업은 완료했습니다. 다음 우선순위는 실제 사이트의 검증 범위·정답 기준을 정하고 오탐·미탐·위치·근거를 확인하는 것입니다. 공식 원문 미확인은 별도로 관리합니다. Git 연결은 13절, 브라우저 검증은 14절, 동적 수집은 15절, 다운로드는 16절, 환경 재현은 17절에 기록합니다.
 
 ## 12. 재개·마무리
 
@@ -197,7 +197,7 @@ README·wiki·이 문서를 갱신했습니다. 기존 result.json·requirements
 
 단계 종료 시 날짜·변경 파일·실행 명령/결과·관련 FR·남은 문제·다음 작업·Git 기록 여부를 갱신합니다.
 
-이전 문서의 '4개/5개 통과', 'health·분석 API 정상', '핵심 검증 완료'는 과거 기록으로만 보존합니다. 최초 재점검은 import 실패였으며 최신 검증 근거는 16절의 실행 결과입니다. 과거의 완료 주장을 현재 전체 완료 근거로 사용하지 않습니다.
+이전 문서의 '4개/5개 통과', 'health·분석 API 정상', '핵심 검증 완료'는 과거 기록으로만 보존합니다. 최초 재점검은 import 실패였으며 최신 검증 근거는 17절의 실행 결과입니다. 과거의 완료 주장을 현재 전체 완료 근거로 사용하지 않습니다.
 
 ## 13. GitHub 연결·최초 업로드
 
@@ -304,3 +304,52 @@ Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty
 환경·TestClient 경고는 15절과 같습니다. 백엔드·의존성·기존 result.json은 변경하지 않았습니다. 실제 브라우저 입력은 로컬 합성 페이지이며 실제 사이트 정확도·공식 스키마·전체 고정 의존성 환경·타 브라우저는 미검증입니다.
 
 README·wiki·진행 기록을 갱신했습니다. 커밋 메시지는 `feat: download full analysis results as JSON`이며 Git 상태·원격 조회로 업로드를 확인합니다. 다음 작업은 고정 의존성 환경 재현과 실행 절차 검증입니다.
+
+## 17. 고정 의존성·설치/기동 재현
+
+2026-10-25 새 격리 환경에서 설치·기동·전체 검증을 진행했습니다. 관련 항목은 FR-001~003·FR-019~022·FR-036·FR-040 및 NFR-001·NFR-003의 일부입니다. 공식 평가환경·최종 배포 산출물 전체 검증은 아닙니다.
+
+### 설치 문제와 수정
+
+- Windows 11 x64(빌드 26200)·CPython 3.14.6·pip 26.1.2를 확인하고 시스템 패키지를 사용하지 않는 .venv를 생성했습니다.
+- 기존 requirements.txt로 `pip install --only-binary=:all: -r requirements.txt`를 실행하자 pydantic==2.9.2가 요구하는 pydantic-core==2.23.4의 호환 휠을 찾지 못해 실패했습니다. 소스 빌드와 이전 Python 버전의 설치는 시도하지 않았습니다.
+- 기존에 앱 검증에 사용한 직접 의존성으로 갱신했습니다: FastAPI 0.150.0·Uvicorn 0.54.0·httpx 0.28.1·BeautifulSoup4 4.15.0·Pydantic 2.14.1. html5lib 1.1·Playwright 1.64.0은 유지했습니다.
+- requirements-dev.txt에 전체 브라우저 환경과 pytest==9.1.1을 추가했습니다. 새 환경 설치 후 constraints-windows-py314.txt에 직접/하위 의존성 31개를 고정하고 requirements.txt에서 공통 적용합니다. Starlette는 새로 해석된 1.10.0이며 pydantic-core는 2.50.1입니다. 전체 버전 목록은 constraints 파일을 기준으로 합니다.
+- .venv에서 최종 requirements-dev.txt 재적용(--no-index), 설치 버전과 constraints의 31개 일치, 시스템 패키지 격리, pip check를 확인했습니다.
+- 별도의 빈 .venv/runtime-check에 최종 constraints를 적용한 requirements.txt만 설치했습니다. 설치된 22개 런타임 패키지의 의존성이 정상이며 pytest·Playwright가 없는 상태에서 기본 기동이 성공했습니다. 로컬 가상환경 두 개는 모두 .venv 아래에 있어 Git에서 제외됩니다.
+
+### 실행 절차와 검증
+
+scripts/smoke_test.py를 외부 example.com 요청 예제에서 로컬 CLI 기동 검사로 바꿨습니다. 선택한 Python으로 실제 `-m uvicorn backend.app.main:app --host 127.0.0.1 --port 임시포트`를 실행하고 health·UI·OpenAPI·잘못된 입력 422를 확인한 뒤 프로세스를 종료합니다. 실제 사이트 수집이나 기존 result.json 변경은 하지 않습니다. 기본 런타임 전용 환경과 전체 개발 환경에서 모두 통과했습니다.
+
+```text
+.venv\Scripts\python.exe -m pip check
+No broken requirements found.
+
+.venv\Scripts\python.exe -B -m pytest tests -q -p no:cacheprovider
+66 passed, 1 warning
+
+.venv\Scripts\python.exe -B scripts/smoke_test.py
+Startup checks passed: Uvicorn CLI, health, UI, OpenAPI, input validation; local requests only
+
+.venv\runtime-check\Scripts\python.exe -m pip check
+No broken requirements found.
+
+.venv\runtime-check\Scripts\python.exe -B scripts/smoke_test.py
+Startup checks passed: Uvicorn CLI, health, UI, OpenAPI, input validation; local requests only
+
+node --preserve-symlinks-main --preserve-symlinks scripts/test_frontend.cjs
+Frontend checks passed: API, modes, filters, partial results, failure reset, full JSON downloads, empty results, UTF-8, URL cleanup.
+
+.venv\Scripts\python.exe -B scripts/test_browser.py
+Browser locations passed: tables, escaped IDs, repeated/nested frames, srcdoc
+Browser checks passed: Edge 156.0.4314.42; UI, filters, partial results, failure recovery, empty results
+Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation
+Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled
+```
+
+Node는 20.12.2입니다. Python 경고 1건은 기존 Starlette TestClient/httpx 사용 중단 예고이며 테스트는 통과했습니다. README에 Python·설치 프로필·휠 설치·pip check·CLI 기동 검사·종료 절차를 반영했습니다. wiki와 진행 기록도 갱신했습니다.
+
+이번 검증은 같은 Windows PC의 새 격리 환경에서 수행했습니다. 다른 OS/Python·별도 PC·GPU 없는 조건·공식 평가 조건·오프라인 배포·실행 파일·장시간 제한·실제 사이트 광고 판정은 미검증입니다. Edge는 별도 설치 앱이며 Python constraints로 버전을 고정하지 않습니다. 앱의 탐지·API·UI 코드와 기존 result.json은 변경하지 않았습니다.
+
+커밋 메시지는 `build: pin reproducible Windows Python 3.14 environment`이며 Git 상태·원격 조회로 업로드를 확인합니다. 다음은 실제 사이트의 검증 범위·정답 기준 확정과 정확도·위치 검증입니다.

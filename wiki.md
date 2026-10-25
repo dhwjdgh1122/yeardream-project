@@ -36,6 +36,8 @@ Frontend → FastAPI → Crawler → Detection Engine
 
 현재 기술은 Python·FastAPI·Uvicorn·httpx·BeautifulSoup4·html5lib·HTML/JavaScript입니다. 수집과 탐지는 HTML5 파서로 동일한 DOM을 구성해 암시적 tbody 등 브라우저의 구조 보정을 반영합니다. 선택적인 동적 수집과 브라우저 검증에는 Playwright와 설치된 Edge를 사용합니다. 특정 프레임워크는 팀의 선택이며 공모전 지정 기술이 아닙니다.
 
+재현 기준은 Windows 11 x64·CPython 3.14.6·pip 26.1.2입니다. requirements.txt는 기본 실행, requirements-browser.txt는 동적 분석, requirements-dev.txt는 전체 검증 환경입니다. 공통 constraints-windows-py314.txt로 직접·하위 의존성 31개를 고정하며 선택 패키지는 필요한 설치 경로에서만 추가합니다. Edge는 외부 설치 앱으로 별도 검증합니다. 설치·기동·테스트 명령은 README를 따릅니다. Python 버전 선택에는 [Pydantic의 Python 3.14 지원 안내](https://pydantic.dev/articles/pydantic-v2-12-release)를 참고했으며 실제 설치 근거는 project.md 17절에서 관리합니다.
+
 현재 파일 배치는 다음과 같습니다. 파일 존재와 정상 동작은 구분합니다.
 
 ```text
@@ -237,6 +239,6 @@ Job 기반 `/api/detection`, `/api/detection/{id}`, `/api/detection/{id}/status`
 
 ## 10. 미확정 사항·선택 기능
 
-공식 원문·출력 스키마, 판정 기준·정확도 목표, 동적 수집의 실제 사이트 지원 범위, 호스트/iframe 정책, 탐색 한도, Python 버전, 실행 파일·배포 방식은 추가 확인이 필요합니다.
+공식 원문·출력 스키마, 판정 기준·정확도 목표, 동적 수집의 실제 사이트 지원 범위, 호스트/iframe 정책, 탐색 한도, 공식 평가 Python 조건·다른 버전의 호환성, 실행 파일·배포 방식은 추가 확인이 필요합니다.
 
 추가 탐지·RAG·LLM·LangChain·LangGraph·DB·이력·고급 UI는 핵심 안정화 이후 검토합니다. 필요성이 확인되지 않은 기술을 먼저 도입하지 않습니다.
