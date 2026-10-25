@@ -20,8 +20,12 @@ def run():
         report = evaluate_suite(args.manifest)
         with args.output.open('x', encoding='utf-8', newline='\n') as stream:
             json.dump(report, stream, ensure_ascii=False, indent=2)
-        print(json.dumps({key: report[key] for key in ('case_count', 'review_complete', 'counts', 'metrics',
-                                                      'unreviewed_labels', 'unjudged_predictions')}))
+        summary = {key: report[key] for key in ('case_count', 'review_complete', 'counts', 'metrics',
+                                               'unreviewed_labels', 'unjudged_predictions')}
+        if report['prediction_repetition'] is not None:
+            summary['prediction_repetition'] = {key: value for key, value in report['prediction_repetition'].items()
+                                                 if key not in {'basis', 'groups'}}
+        print(json.dumps(summary))
         return 0
     except (ValueError, OSError, RuntimeError, KeyError) as error:
         print(f'Suite evaluation failed: {error}', file=sys.stderr)

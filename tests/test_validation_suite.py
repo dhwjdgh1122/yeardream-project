@@ -9,7 +9,7 @@ import pytest
 
 from backend.app import crawler
 from backend.app.evaluation import capture_site
-from backend.app.validation_suite import evaluate_suite
+from backend.app.validation_suite import evaluate_suite, summarize_content_repetition
 
 
 def write(path, data):
@@ -54,6 +54,7 @@ def test_complete_micro_counts_include_real_misses(suite):
     assert report['by_category']['GAMBLING'] == dict(tp=1, fp=0, fn=1, tn=1)
     assert report['collection_warning_count'] == 0
     assert all(r['metrics_purpose'] == 'content_presence_only' for r in report['reports'])
+    assert report['prediction_repetition']['prediction_count'] == 1
 
 
 def test_partial_review_cannot_produce_suite_accuracy(suite):
@@ -109,6 +110,40 @@ def test_feature_suite_is_not_content_accuracy(suite):
     report = evaluate_suite(suite)
     assert report['metrics_purpose'] == 'four_technique_features_only'
     assert 'by_technique' in report and report['metrics'] is None
+    assert report['prediction_repetition'] is None
+
+
+def candidate(text, location, category='GAMBLING'):
+    return dict(source_text=text, location=location, category=category, url='https://example.test')
+
+
+def test_repetition_counts_occurrences_and_cases_without_merging_findings():
+    reports = [dict(case_id='a', content_candidates=[candidate('same', '#one'), candidate('same', '#two')]),
+               dict(case_id='b', content_candidates=[candidate('same', '#three'), candidate('other', '#four')])]
+    summary = summarize_content_repetition(reports)
+    assert summary['prediction_count'] == 4
+    assert summary['unique_category_text_count'] == 2
+    assert summary['repeated_category_text_group_count'] == 1
+    assert summary['occurrences_in_repeated_groups'] == 3
+    assert summary['additional_repeated_occurrences'] == 2
+    assert summary['groups'][0]['case_count'] == 2
+    assert summary['groups'][0]['case_ids'] == ['a', 'b']
+    assert len(summary['groups'][0]['occurrences']) == 3
+    assert len(reports[0]['content_candidates']) == 2
+
+
+def test_repetition_preserves_category_whitespace_and_unicode_differences():
+    reports = [dict(case_id='a', content_candidates=[candidate('A', '#a'), candidate(' A', '#b'),
+        candidate('Ａ', '#c'), candidate('A', '#d', 'ADULT_CONTENT')])]
+    summary = summarize_content_repetition(reports)
+    assert summary['unique_category_text_count'] == 4
+    assert summary['additional_repeated_occurrences'] == 0
+
+
+@pytest.mark.parametrize('text', [None, ''])
+def test_repetition_does_not_group_missing_original_text(text):
+    with pytest.raises(ValueError, match='original source_text'):
+        summarize_content_repetition([dict(case_id='a', content_candidates=[candidate(text, '#a')])])
 
 
 def test_cli_exclusive_report_preserves_inputs(suite):

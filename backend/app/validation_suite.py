@@ -36,6 +36,41 @@ def _metrics(counts):
     }
 
 
+def summarize_content_repetition(reports):
+    """Describe exact-text repetition without merging scored DOM locations.
+
+    This is a diagnostic for predicted content, not dataset independence or
+    accuracy. Whitespace/Unicode differences are deliberately preserved.
+    """
+    groups = {}
+    for report in reports:
+        for candidate in report['content_candidates']:
+            text = candidate.get('source_text')
+            if not isinstance(text, str) or not text:
+                raise ValueError('Repetition diagnostics require original source_text')
+            key = (candidate['category'], _hash(text.encode('utf-8')))
+            group = groups.setdefault(key, {'category': key[0], 'source_text_sha256': key[1], 'occurrences': []})
+            group['occurrences'].append({
+                'case_id': report['case_id'], 'url': candidate['url'], 'location': candidate['location'],
+            })
+    repeated = []
+    for key in sorted(groups):
+        group = groups[key]
+        count = len(group['occurrences'])
+        if count > 1:
+            case_ids = sorted({item['case_id'] for item in group['occurrences']})
+            repeated.append({**group, 'occurrence_count': count, 'case_count': len(case_ids), 'case_ids': case_ids})
+    return {
+        'basis': 'Predicted category + exact original UTF-8 text; not semantic uniqueness or independent samples',
+        'prediction_count': sum(len(group['occurrences']) for group in groups.values()),
+        'unique_category_text_count': len(groups),
+        'repeated_category_text_group_count': len(repeated),
+        'occurrences_in_repeated_groups': sum(group['occurrence_count'] for group in repeated),
+        'additional_repeated_occurrences': sum(group['occurrence_count'] - 1 for group in repeated),
+        'groups': repeated,
+    }
+
+
 def evaluate_suite(manifest_path):
     """Pinned captures/labels are inputs; no files are written and no sites fetched."""
     manifest_path = Path(manifest_path).resolve()
@@ -91,5 +126,6 @@ def evaluate_suite(manifest_path):
         'counts_scope': 'Reviewed labels only; complete cases additionally count unmatched predictions as FP',
         'metrics_purpose': reports[0]['metrics_purpose'],
         'collection_warning_count': sum(len(report['collection_warnings']) for report in reports),
+        'prediction_repetition': summarize_content_repetition(reports) if suite.kind == 'content' else None,
         'reports': reports,
     }
