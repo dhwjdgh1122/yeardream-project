@@ -64,6 +64,9 @@ DOCUMENTS = {
     "runtime-nested": '<body onload="document.querySelector(\'p\').style.opacity=\'0\'"><p id="nested-ad">Nested runtime</p>',
     "runtime-child": '<body onload="document.querySelector(\'p\').style.opacity=\'0\'"><p id="child-ad">Child runtime</p>',
     "runtime-error": '<body><p style="opacity:0">Surviving result</p><iframe src="/fixtures/missing"></iframe><script>throw new Error("Fixture runtime error")</script>',
+    "content": '''<p id="gamble">토토사이트 신규가입 보너스 안내</p>
+        <p id="adult">야동티비 무료시청 플랫폼</p>
+        <p id="education">도박 예방교육: 토토사이트 가입 보너스 광고를 주의하세요.</p>''',
 }
 
 
@@ -97,6 +100,7 @@ def run():
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(base)
                     assert page.locator('#download').is_disabled()
+                    assert page.locator('#downloadContent').is_disabled()
 
                     def download_json(data, name):
                         with page.expect_download() as pending:
@@ -160,7 +164,7 @@ def run():
                     assert '수집하지 못했습니다' in page.locator('#output').inner_text()
                     clean = analyze('clean')
                     assert clean['findings'] == [] and not clean['warnings']
-                    assert '분석 완료: 0개' in page.locator('#status').inner_text()
+                    assert '위장·은닉 0개, 광고 후보 0개' in page.locator('#status').inner_text()
                     download_json(clean, 'static-empty')
                     dynamic = analyze('dynamic')
                     target.goto(base + '/fixtures/dynamic')
@@ -223,10 +227,34 @@ def run():
                     })
                     assert expired.status == 504, expired.text()
                     assert main.result_path.read_bytes() == previous
+                    page.locator('#collectionMode').select_option('static')
+                    content = analyze('content')
+                    assert len(content['content_candidates']) == 2 and not content['findings']
+                    assert '광고 후보 2개' in page.locator('#status').inner_text()
+                    assert {item['location'] for item in content['content_candidates']} == {'p#gamble', 'p#adult'}
+                    for category in ['GAMBLING', 'ADULT_CONTENT']:
+                        page.locator('#techniqueFilter').select_option(category)
+                        summary = json.loads(page.locator('#output').inner_text())
+                        assert summary['totalContentCandidates'] == 1
+                        assert summary['totalFindings'] == 0
+                    with page.expect_download() as pending:
+                        page.locator('#downloadContent').click()
+                    download = pending.value
+                    assert download.suggested_filename == 'content-candidates.json'
+                    path = Path(temporary) / 'content-candidates.json'
+                    download.save_as(path)
+                    report = json.loads(path.read_text(encoding='utf-8'))
+                    assert report['candidates'] == content['content_candidates']
+                    assert report['purpose'] == 'content_candidate_review'
+                    assert report['policy_version'] == content['content_policy_version'] == 'content-rules-v1'
+                    download_json(content, 'content-four-technique-json')
+                    analyze('missing', 502)
+                    assert page.locator('#downloadContent').is_disabled()
                     assert not errors, errors
                     print(f'Browser checks passed: Edge {browser.version}; UI, filters, partial results, failure recovery, empty results')
                     print('Dynamic checks passed: static=0/browser=11; fetched comments, runtime links/depth, live repeated/nested frames, scripted srcdoc/about:blank, locations, file, JS/frame failure warnings, 502/504 preservation')
                     print('Download checks passed: filename, UTF-8 without BOM, full/filtered/partial/empty/static/dynamic results, per-page retention, failure disabled')
+                    print('Content checks passed: promotion candidates, education exclusion, category filters, separate full download, original result schema')
         finally:
             server.should_exit = True
             thread.join(timeout=10)

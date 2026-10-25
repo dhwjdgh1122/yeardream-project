@@ -69,6 +69,8 @@
           </select>
           <select id="techniqueFilter" style="min-width: 180px;">
             <option value="ALL">전체 유형</option>
+            <option value="GAMBLING">도박 홍보 후보</option>
+            <option value="ADULT_CONTENT">성인물 홍보 후보</option>
             <option value="HOMOGLYPH">HOMOGLYPH</option>
             <option value="JAMO">JAMO</option>
             <option value="TRANSPARENT">TRANSPARENT</option>
@@ -80,8 +82,9 @@
         <div class="status" id="status">대기 중</div>
         <p>
           <button id="download" disabled>JSON 다운로드</button>
-          화면 필터와 관계없이 전체 결과를 저장합니다. 부분 분석이면 안내 내용도 확인해 주세요.
+          <button id="downloadContent" disabled>광고 후보 다운로드</button>
         </p>
+        <p>JSON 다운로드는 4종 위장·은닉 결과, 광고 후보 다운로드는 내용 판별 결과를 저장합니다. 화면 필터와 관계없이 전체 결과를 저장합니다. 광고 후보는 검토가 필요하며 부분 분석 안내도 확인해 주세요.</p>
         <div class="result" id="output">결과가 여기에 표시됩니다.</div>
       </div>
     </div>
@@ -94,11 +97,14 @@
       const analyzeButton = document.getElementById('analyze');
       const collectionMode = document.getElementById('collectionMode');
       const downloadButton = document.getElementById('download');
+      const downloadContentButton = document.getElementById('downloadContent');
       let lastAnalysis = null;
 
       function renderFindings(data) {
         const filter = techniqueFilter.value;
         const findings = data.findings.filter((item) => filter === 'ALL' || item.technique === filter);
+        const contentCandidates = (data.content_candidates || []).filter((item) =>
+          filter === 'ALL' || item.category === filter || item.techniques.includes(filter));
 
         const summary = {
           url: data.url,
@@ -106,6 +112,8 @@
           pageTitle: data.page_title || 'N/A',
           totalPages: data.crawled_pages.length,
           totalFindings: findings.length,
+          totalContentCandidates: contentCandidates.length,
+          contentCandidates,
           warnings: data.warnings || [],
           findings: findings.map((item) => ({
             technique: item.technique,
@@ -122,6 +130,7 @@
       analyzeButton.addEventListener('click', async () => {
         lastAnalysis = null;
         downloadButton.disabled = true;
+        downloadContentButton.disabled = true;
         const url = urlInput.value.trim();
         if (!url) {
           status.textContent = 'URL을 입력해 주세요.';
@@ -149,8 +158,9 @@
           lastAnalysis = data;
           renderFindings(lastAnalysis);
           downloadButton.disabled = !data.result_json;
+          downloadContentButton.disabled = false;
           const completion = data.warnings?.length ? '분석 완료(일부 범위 미분석)' : '분석 완료';
-          status.textContent = `${completion}: ${data.findings.length}개 탐지 결과`;
+          status.textContent = `${completion}: 위장·은닉 ${data.findings.length}개, 광고 후보 ${(data.content_candidates || []).length}개`;
         } catch (error) {
           output.textContent = error.message;
           status.textContent = '오류 발생';
@@ -160,15 +170,14 @@
         }
       });
 
-      downloadButton.addEventListener('click', () => {
-        if (downloadButton.disabled || !lastAnalysis?.result_json) return;
-        const blob = new Blob([JSON.stringify(lastAnalysis.result_json, null, 2)], {
+      function downloadJson(data, filename) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
           type: 'application/json;charset=utf-8'
         });
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = objectUrl;
-        link.download = 'result.json';
+        link.download = filename;
         document.body.appendChild(link);
         try {
           link.click();
@@ -176,6 +185,23 @@
           link.remove();
           setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
         }
+      }
+
+      downloadButton.addEventListener('click', () => {
+        if (downloadButton.disabled || !lastAnalysis?.result_json) return;
+        downloadJson(lastAnalysis.result_json, 'result.json');
+      });
+
+      downloadContentButton.addEventListener('click', () => {
+        if (downloadContentButton.disabled || !lastAnalysis) return;
+        downloadJson({
+          purpose: 'content_candidate_review',
+          policy_version: lastAnalysis.content_policy_version || null,
+          meta: lastAnalysis.result_json.meta,
+          collection_mode: lastAnalysis.collection_mode || 'static',
+          warnings: lastAnalysis.warnings || [],
+          candidates: lastAnalysis.content_candidates || []
+        }, 'content-candidates.json');
       });
 
       techniqueFilter.addEventListener('change', () => {

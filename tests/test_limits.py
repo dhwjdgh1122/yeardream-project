@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import crawler, limits, main
 from backend.app.detection import detect_page
+from backend.app.content import detect_content
 
 
 @pytest.fixture
@@ -113,11 +114,11 @@ def test_timeout_after_completed_page_returns_partial_findings(monkeypatch, tmp_
         '<p id="ad" style="opacity:0">Ad</p><a href="/child">Child</a>' if url.endswith('.com') else '<p>Child</p>', url))
 
     def detect(page, **kwargs):
-        findings = detect_page(page, **kwargs)
+        findings = detect_content(page, **kwargs)
         clock[0] = 2
         return findings
 
-    monkeypatch.setattr(main, 'detect_page', detect)
+    monkeypatch.setattr(main, 'detect_content', detect)
     monkeypatch.setattr(main, 'result_path', tmp_path / 'result.json')
     with TestClient(main.app) as client:
         response = client.post('/api/analyze', json={'url': 'https://example.com', 'total_timeout_sec': 1})

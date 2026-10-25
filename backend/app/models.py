@@ -21,11 +21,25 @@ class Finding(BaseModel):
     confidence: float = 0.0
 
 
+class ContentCandidate(BaseModel):
+    category: Literal['GAMBLING', 'ADULT_CONTENT']
+    url: str
+    selector: str
+    location: str
+    evidence: str
+    matched_terms: List[str]
+    techniques: List[str] = Field(default_factory=list)
+    review_status: Literal['needs_review'] = 'needs_review'
+    policy_version: str
+
+
 class AnalysisResponse(BaseModel):
     url: str
     collection_mode: Literal['static', 'browser'] = 'static'
     page_title: Optional[str] = None
     crawled_pages: List[str]
     findings: List[Finding]
+    content_candidates: List[ContentCandidate] = Field(default_factory=list)
+    content_policy_version: str = 'content-rules-v1'
     result_json: Dict[str, Any]
     warnings: List[str] = Field(default_factory=list)

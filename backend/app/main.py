@@ -14,6 +14,7 @@ from .result import build_result_json
 from .models import AnalyzeRequest, AnalysisResponse, Finding
 from .limits import AnalysisTimeout, Deadline
 from .browser import BrowserRenderer, BrowserUnavailable
+from .content import POLICY_VERSION, detect_content
 
 app = FastAPI(title="YearDream Illegal Ad Detection API", version="0.1.0")
 
@@ -68,17 +69,25 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
         findings: List[Finding] = []
         seen = set()
         raw_findings: List[Dict[str, Any]] = []
+        content_candidates = []
+        seen_content = set()
 
         analyzed_pages = 0
         for page in successful_pages:
             try:
                 page_findings = detect_page(page, deadline=deadline)
+                page_content = detect_content(page, feature_findings=page_findings, deadline=deadline)
             except AnalysisTimeout:
                 if not analyzed_pages:
                     raise HTTPException(status_code=504, detail="분석 시간 제한에 도달했습니다.")
                 warnings.append("분석 시간 제한으로 나머지 페이지 분석을 중단했습니다.")
                 break
             analyzed_pages += 1
+            for candidate in page_content:
+                key = (candidate['url'], candidate['location'], candidate['category'])
+                if key not in seen_content:
+                    seen_content.add(key)
+                    content_candidates.append(candidate)
             for detected in page_findings:
                 key = (detected["url"], detected["location"], detected["technique"])
                 if key in seen:
@@ -115,6 +124,8 @@ def analyze(payload: AnalyzeRequest) -> AnalysisResponse:
             page_title=str(page_title) if page_title else None,
             crawled_pages=list(dict.fromkeys(str(page["url"]) for page in successful_pages)),
             findings=findings,
+            content_candidates=content_candidates,
+            content_policy_version=POLICY_VERSION,
             result_json=result_json,
             warnings=list(dict.fromkeys(warnings)),
         )

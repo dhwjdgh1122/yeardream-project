@@ -20,7 +20,7 @@ URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe�
 
 Python, FastAPI, Uvicorn, httpx, BeautifulSoup4, html5lib 및 HTML/JavaScript를 사용합니다. HTML5 파싱으로 브라우저의 tbody 삽입 등을 반영합니다. 선택 가능한 동적 분석은 Playwright와 Microsoft Edge를 사용합니다. 설치·검증 기준은 **Windows 11 x64 / CPython 3.14.6**이며 다른 Python·OS 조합은 미검증입니다. 상세 구조는 [wiki.md](wiki.md)를 참조합니다.
 
-최신 검증 결과는 [project.md](project.md)에서 관리합니다. 고유 selector·중첩/반복 iframe 경로·API/JSON 위치 보존에 더해 링크 깊이·수집/탐지 공유 시간 예산을 구현했습니다. 새 가상환경의 고정 의존성으로 Python 테스트·서버 시작·실제 Edge의 정적/동적 분석·다운로드를 확인했습니다. 실제 사이트·광고 판정 정확도 검증은 남아 있습니다.
+최신 검증 결과는 [project.md](project.md)에서 관리합니다. 4종 위장/은닉 특징과 별도로 도박·성인물 홍보의 내용 후보를 판별합니다. 실제 누락 게시물 2건에서 제목·본문 후보를 확인했고, 교육청 예방자료에서는 내용 후보가 없었습니다. 고정 환경·정적/동적 수집·위치·화면·다운로드를 검증했으며 전체 광고 판정 정확도 측정은 남아 있습니다.
 
 ## 설치 및 실행
 
@@ -87,9 +87,13 @@ API 예시:
 
 ## JSON 다운로드
 
-분석 완료 후 **JSON 다운로드**를 누르면 `result.json`을 저장합니다. 화면의 유형 필터와 관계없이 마지막으로 완료한 분석의 전체 제출용 결과를 포함합니다. 기본·동적 분석, 부분 결과, 탐지 0건 결과를 지원합니다. 분석 전·새 분석 진행 중·요청 실패·빈 URL 제출 후에는 버튼을 비활성화합니다.
+분석 완료 후 **JSON 다운로드**는 기존 4종 기법의 `result.json`, **광고 후보 다운로드**는 내용 후보의 `content-candidates.json`을 저장합니다. 모두 화면 필터와 관계없이 마지막 분석의 전체 해당 결과를 포함하며 기본·동적·부분·0건을 지원합니다. 분석 전·새 분석 진행 중·요청 실패·빈 URL 제출 후에는 버튼을 비활성화합니다.
 
 현재 화면이 보관한 API 응답의 `result_json`을 UTF-8(BOM 없음)으로 저장합니다. 서버 파일과의 일치는 파싱한 JSON 값 기준으로 검증합니다. 다른 화면의 분석이 서버 파일을 바꾸더라도 현재 화면의 결과를 내려받습니다. 부분 분석의 warnings는 화면에서 확인해야 하며 제출 JSON에는 포함하지 않습니다.
+
+내용 후보는 API의 `content_candidates`에 GAMBLING/ADULT_CONTENT로 반환합니다. 위치·문맥·일치 표현·연결된 4종 기법·규칙 버전과 `review_status: needs_review`를 포함합니다. 후보 파일에는 수집 방식·분석 메타데이터·경고·규칙 버전도 저장합니다. 일반 표시 광고는 임의의 technique을 붙여 기존 제출 JSON에 넣지 않습니다.
+
+content-rules-v1은 같은 텍스트 블록에서 도박/성인물 관련 표현과 가입·이용·시청 유도 표현이 가까이 나타나는지 검사합니다. inline 조각·공백·일부 전각/보이지 않는 문자 형태를 정리하며 예방교육·단속 보도 등 명시적인 정상 문맥은 제외합니다. 후보는 검토 대상이며 법적 위반 확정이나 측정된 confidence가 아닙니다. 사전 밖의 은어·변형, 서로 다른 문단에 분산된 광고, 이미지·동영상·CSS 문맥, 예방 문구를 섞은 광고는 놓칠 수 있습니다. 기존 result.json의 is_violation 임시 기본값은 이번 작업에서 변경하지 않았습니다.
 
 ## 테스트
 
@@ -131,7 +135,7 @@ $targetUrl = Read-Host "검증할 공개 페이지 URL"
 
 동적 페이지에는 `--mode browser`를 사용합니다. 기본 한도는 링크 깊이 0·문서 컨텍스트 8·프레임 깊이 3·공유 시간 60초입니다. `--max-depth`, `--total-timeout-sec`, `--render-wait-ms`로 범위를 조정할 수 있습니다. 기존 폴더는 덮어쓰지 않으므로 새 수집에는 다른 run 이름을 사용합니다. 전체 수집 실패는 종료 코드 2이며 정상 0건으로 취급하지 않습니다.
 
-수집 폴더에는 HTML, 입력·수집 시각·프레임 경로·해시·탐지 후보·제외/실패 사유를 담은 capture.json, 검수용 labels.json이 생깁니다. `.validation/`은 Git에서 제외됩니다. 앱의 result.json을 변경하지 않습니다.
+수집 폴더에는 HTML, 입력·수집 시각·프레임 경로·해시·4종 탐지·내용 후보·제외/실패 사유를 담은 capture.json, 검수용 labels.json이 생깁니다. `.validation/`은 Git에서 제외됩니다. 앱의 result.json을 변경하지 않습니다. labels.json과 precision/recall/F1은 4종 특징 검수용이며 내용 후보는 보고서의 별도 항목입니다. 내용 후보 정확도는 별도 정답 검수가 필요합니다.
 
 labels.json은 초기에는 `complete: false`, 각 후보는 `expected: null`, `reviewed: false`입니다. 후보뿐 아니라 놓친 요소와 정상 사례도 저장된 문서에서 찾아 수동으로 추가합니다.
 
@@ -147,4 +151,4 @@ capture_sha256는 해당 수집과 정답의 연결 값이므로 유지합니다
 
 평가는 **저장에 성공한 문서 범위**에 한정합니다. report.json의 수집 경고와 미검토 수를 함께 확인합니다. 수집에서 빠진 페이지·화면 밖 리소스·광고 위반 판정 전체를 이 점수로 평가하지 않습니다. HTML 해시 불일치·다른 수집의 정답·중복/잘못된 요소 경로는 거부합니다. evaluate는 저장된 HTML만 읽으며 재접속하지 않습니다.
 
-2026-10-25 실제 사이트 점검에서 광주 교육청 어린이 게시판의 [도박 홍보성 게시물](https://gen.go.kr/child/xboard/board.php?mode=view&number=107&tbnum=6)과 [성인물 홍보성 게시물](https://gen.go.kr/child/xboard/board.php?mode=view&number=151&tbnum=6)에 분석 API가 0건을 반환하는 한계를 확인했습니다. 현재 4종 위장/은닉 특징만으로는 일반 표시 광고의 내용을 탐지하지 못합니다. 0건을 광고가 없는 페이지로 해석하지 않으며, 구체적인 근거·수집 범위는 project.md 19절을 참조합니다.
+2026-10-25 광주 교육청 어린이 게시판의 [도박 홍보성 게시물](https://gen.go.kr/child/xboard/board.php?mode=view&number=107&tbnum=6)과 [성인물 홍보성 게시물](https://gen.go.kr/child/xboard/board.php?mode=view&number=151&tbnum=6)에 기존 분석이 0건을 반환했던 문제를 확인했습니다. 내용 판별 추가 후 API는 게시물마다 제목·본문 2개씩 후보를 반환합니다. 4종 기법은 여전히 0건이며 내용 후보와 구분합니다. 같은 교육청의 [예방 홍보 자료](https://gen.go.kr/xboard/board.php?mode=view&number=454470&tbnum=520)는 내용 후보 0건을 확인했습니다. 전체 사이트 정확도 수치가 아니며 근거·범위는 project.md 19~20절을 따릅니다.

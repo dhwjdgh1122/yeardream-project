@@ -27,12 +27,13 @@ def run():
             data = capture_site(args.url, args.output, mode=args.mode, max_depth=args.max_depth,
                                 total_timeout_sec=args.total_timeout_sec, render_wait_ms=args.render_wait_ms)
             print(json.dumps({'documents': len(data['documents']), 'predictions': len(data['predictions']),
+                              'content_candidates': len(data['content_candidates']),
                               'warnings': len(data['warnings']), 'output': str(args.output)}))
             return 0 if any('file' in doc for doc in data['documents']) else 2
         report = evaluate_capture(args.directory)
         output = args.directory / 'report.json'
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-        print(json.dumps({key: report[key] for key in ('review_complete', 'prediction_count',
+        print(json.dumps({key: report[key] for key in ('review_complete', 'prediction_count', 'content_candidate_count',
                          'unreviewed_labels', 'unjudged_predictions', 'counts', 'metrics')}))
         return 0
     except (ValueError, OSError, RuntimeError, KeyError) as error:

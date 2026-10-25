@@ -47,6 +47,7 @@ backend/app/
   crawler.py       # 정적 HTTP 수집·링크·iframe 탐색
   browser.py       # 선택적 Edge 렌더링·실제 프레임 DOM 수집
   detection.py     # 탐지 로직
+  content.py       # 도박·성인물 홍보 내용 후보
   location.py      # 고유 selector 생성
   limits.py        # 수집·탐지 공유 시간 예산
   result.py        # 결과 변환·팀 규격 검증
@@ -120,7 +121,11 @@ HTML에 존재하는 게시글·댓글과 JS 실행·추가 요청이 필요한 
 
 위장·은닉 특징 발견과 불법광고 위반 판정은 구분합니다. 실제 텍스트·맥락·정답 기준을 함께 검토하며 CSS 속성 하나로 is_violation=true를 확정하지 않습니다. 광고 판정 조건·키워드·임계값·정확도 목표는 사용자의 기준 확정 전입니다. 고정 confidence를 측정 정확도로 설명하지 않습니다.
 
-2026-10-25 사용자가 내용 범위를 공공 웹사이트에 게시·은닉된 도박·성인물 등의 광고로 구체화했습니다. 참여·가입·이용을 유도하는 홍보 맥락과 예방교육·보도·행정 안내를 구분해야 합니다. 표현/은닉 4종과 내용 범주는 독립적입니다. 실제 gen.go.kr 어린이 게시판의 일반 표시 홍보 글에서 4종 탐지 0건이 재현돼 내용 판별 부재를 확인했습니다. 현재 0건은 광고 부재의 근거가 아닙니다. 일반 표시 광고의 검출과 제출 technique 매핑은 후속 구현 항목이며 임의의 기법 값으로 대체하지 않습니다. 키워드 조합·임계값·정상 예외와 공식 출력 규격은 아직 확정되지 않았습니다.
+2026-10-25 사용자가 내용 범위를 공공 웹사이트에 게시·은닉된 도박·성인물 등의 광고로 구체화했습니다. 실제 gen.go.kr 일반 표시 글에서 기존 4종 탐지 0건을 재현한 뒤 content-rules-v1 내용 후보 판별을 추가했습니다. 표현/은닉 4종과 내용 범주는 독립적이며 일반 표시 후보는 별도의 content_candidates로 반환합니다. 제출 technique 매핑은 공식 원문 대조 후 결정하며 임의의 기법 값으로 대체하지 않습니다. 내용 후보가 없다는 사실도 광고 부재를 보장하지 않습니다.
+
+content-rules-v1은 텍스트를 가장 가까운 블록에 귀속해 inline 조각은 합치고 서로 다른 문단은 섞지 않습니다. NFKC·일부 zero-width 문자 제거·공백 정리 후 주제 표현과 유도 표현을 함께 검사합니다. 주제의 앞 45/뒤 100자 범위에서 가입·추천·홍보·무료시청 등의 단서가 필요합니다. 예방교육·피해예방·단속 보도·가입/접속 주의 등 명시적인 보호 문맥이 있으면 해당 창을 제외합니다. 페이지 전체의 예방 문구로 다른 문단 광고까지 제외하지 않습니다. 동작하는 규칙과 예외의 기준은 content.py 및 tests/test_content.py입니다.
+
+후보 단위는 URL+location+category이며 GAMBLING/ADULT_CONTENT로 분류합니다. selector·근거 문맥·matched_terms·policy_version·needs_review 상태를 보존합니다. 같은 텍스트 블록의 4종 특징만 techniques에 연결하고 다른 하위 문단의 특징은 연결하지 않습니다. 고정 confidence나 is_violation을 새로 부여하지 않습니다. 짧은 공백/전각 변형은 처리하지만 일반적인 의미 이해·은어 전반·문단 간 문맥·이미지/OCR·CSS 기반 내용 판별은 미지원입니다. 보호 문구를 섞은 광고 등 회피/오탐 가능성도 남아 있습니다. 전체 정확도는 정답 데이터로 별도 측정해야 합니다.
 
 근거는 원문 텍스트·의심 문자·스타일·판정 이유를 가능한 한 포함합니다. 내부 분석 정보와 제출 필드는 Result Builder에서 명시적으로 변환합니다.
 
@@ -208,7 +213,9 @@ is_violation=false 포함 여부와 의심 사례 표현은 공식 규격·분�
 | GET /api/health | 서버 생존 확인 |
 | POST /api/analyze | URL 분석·결과 반환 |
 
-요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API의 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 현재 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, result_json, warnings이며 API finding은 technique, selector, location, url, evidence, confidence를 갖습니다. 제출용 finding과는 다릅니다. evidence → evidence_text 등의 변환은 Result Builder가 맡으며 변경 시 모델·UI를 함께 수정합니다.
+요청의 필수값은 `{"url": "https://example.com"}`입니다. 선택값 max_depth는 0~20 정수(기본 2), total_timeout_sec는 0 초과~1800 이하 유한 숫자(기본 60), collection_mode는 static(기본)/browser, render_wait_ms는 0~5000 정수(기본 500)입니다. 이 상한은 API의 개발 기준이며 공모전 요구값이 아닙니다. 잘못된 값은 HTTP 422로 거부합니다. 현재 응답 모델은 url, collection_mode, page_title, crawled_pages, findings, content_candidates, content_policy_version, result_json, warnings입니다. API finding은 technique, selector, location, url, evidence, confidence를 갖습니다. 제출용 finding과는 다릅니다. evidence → evidence_text 등의 변환은 Result Builder가 맡으며 변경 시 모델·UI를 함께 수정합니다.
+
+한 페이지의 완료 기준은 4종 특징과 내용 후보 두 단계가 모두 끝난 시점입니다. 두 단계가 공유 Deadline을 사용하며 중간 만료 시 해당 페이지의 두 결과를 함께 버립니다. 앞서 완료한 페이지가 없으면 504, 있으면 그 결과와 부분 경고를 반환합니다.
 
 browser 모드는 Playwright·Edge가 필요하며 시작 실패는 HTTP 503입니다. 정적으로 자동 전환하지 않습니다. 브라우저 시작·이동·추가 대기·수집·탐지는 동일 Deadline을 사용합니다. 이동 timeout은 남은 시간과 10초 중 작은 값이며 대기도 남은 시간으로 제한합니다. 드라이버 시작·DOM 직렬화·종료 등 모든 작업을 즉시 강제 종료하는 기능은 아닙니다. 오류 응답은 기존 결과 파일을 보존합니다. collection_mode는 API·UI 안내이며 제출 JSON에는 추가하지 않습니다.
 
@@ -221,6 +228,8 @@ crawled_pages는 수집 성공한 문서 URL의 중복 없는 목록입니다. s
 UI 목표는 URL 입력·실행·상태 안내·전체/유형별 건수·URL·location·근거·필터·JSON 다운로드입니다. 응답 원본을 보존해 필터링합니다. Frontend에 수집·탐지 로직을 넣지 않습니다.
 
 JSON 다운로드는 현재 화면의 마지막 성공 응답에 담긴 result_json 전체를 사용합니다. 유형 필터는 다운로드 내용에 영향을 주지 않습니다. Blob(application/json;charset=utf-8)과 임시 링크로 result.json을 저장하고 링크·object URL을 정리합니다. UTF-8 BOM 없이 직렬화하며 API·서버 파일과의 동등성은 파싱한 JSON 값 기준입니다. 기본/동적·부분 분석·0건 모두 저장할 수 있습니다. 부분 분석의 warnings는 기존 제출 규격에 추가하지 않으며 화면 안내를 유지합니다.
+
+UI는 4종 특징 수와 내용 후보 수를 따로 표시합니다. 범주 필터는 내용 후보를, 기법 필터는 해당 특징과 그 특징이 연결된 후보를 표시합니다. 별도 ‘광고 후보 다운로드’는 content-candidates.json으로 purpose=content_candidate_review·규칙 버전·meta·수집 방식·warnings·전체 candidates를 저장합니다. 두 다운로드 모두 필터에 독립적이며 새 분석·실패·빈 URL 제출 때 비활성화합니다. 기존 제출 JSON과 is_violation 임시 기본값은 유지되며 내용 후보를 법적 위반 확정으로 취급하지 않습니다.
 
 분석 전과 새 분석 시작 시 다운로드를 비활성화하고 성공 응답 이후에만 활성화합니다. 실패·빈 URL 제출 후에는 과거 응답으로 내려받지 못하게 합니다. 공유 서버 파일을 다시 가져오는 경로는 추가하지 않으며 다른 요청이 파일을 덮어써도 현재 화면의 응답을 유지합니다.
 
@@ -240,6 +249,8 @@ Job 기반 `/api/detection`, `/api/detection/{id}`, `/api/detection/{id}/status`
 작은 기능 → 실행 → 예상 결과·회귀 확인 → 진행 기록 갱신 순으로 개발합니다. 기존 코드를 검토 없이 삭제하거나 프로젝트 전체를 재생성하지 않습니다. Git 기록 여부와 기능 검증은 구분합니다.
 
 사이트 검증 도구는 수집(capture)과 정답 비교(evaluate)를 분리합니다. capture는 원본/렌더링 HTML과 컨텍스트·시각·설정·해시·코드/패키지 버전·탐지 후보·수집 경고를 기록하고 후보 정답은 미검토로 생성합니다. evaluate는 저장된 HTML을 현재 탐지기로 다시 분석합니다. HTML 및 capture 해시로 입력을 확인하고, 정답 selector를 해당 문서·프레임의 실제 요소로 재식별합니다. 같은 요소를 가리키는 다른 selector는 같은 정답으로 처리합니다.
+
+capture/evaluate는 내용 후보·규칙 버전·후보 수도 별도 기록합니다. labels와 metrics는 기존 4종 특징만 평가하며 metrics_purpose=four_technique_features_only로 명시합니다. 내용 후보의 정확도를 이 지표로 대체하지 않습니다.
 
 정답 기준 초안은 문자 위장과 정상 외국어, 분리형 한글 위장과 정상 초성, 텍스트의 실제 은닉과 정상 표시, 화면 이탈과 정상 배치를 구분하는 것입니다. 접근성 텍스트·외국어·초성·작은 글꼴·display:none 등의 예외와 유형 경계는 사용자 기준으로 확정하고 labels.json의 policy에 버전을 기록합니다. 이 초안은 공식 위반 판정 기준이 아닙니다. 확정 전에는 expected=null·reviewed=false를 유지합니다.
 

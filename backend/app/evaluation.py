@@ -19,6 +19,7 @@ from .detection import detect_page
 from .limits import AnalysisTimeout, Deadline
 from .models import AnalyzeRequest
 from .location import build_selector
+from .content import POLICY_VERSION, detect_content
 
 TECHNIQUES = ('HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN')
 Technique = Literal['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN']
@@ -85,6 +86,7 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
                            deadline=deadline, renderer=renderer)
     documents = []
     predictions = []
+    content_candidates = []
     warnings = []
     output.mkdir(parents=True)
     for index, page in enumerate(pages):
@@ -97,7 +99,10 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
             record['sha256'] = _hash(raw)
             (output / record['file']).write_bytes(raw)
             try:
-                predictions.extend(detect_page(page, deadline=deadline))
+                features = detect_page(page, deadline=deadline)
+                content = detect_content(page, feature_findings=features, deadline=deadline)
+                predictions.extend(features)
+                content_candidates.extend(content)
             except AnalysisTimeout:
                 record['detection_incomplete'] = True
                 warnings.append({'kind': 'detection_timeout', 'url': page['url']})
@@ -109,7 +114,7 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
         documents.append(record)
     predictions = list({_key(item): item for item in predictions}.values())
     root = Path(__file__).resolve().parents[2]
-    sources = ['backend/app/detection.py', 'backend/app/location.py', 'constraints-windows-py314.txt']
+    sources = ['backend/app/detection.py', 'backend/app/content.py', 'backend/app/location.py', 'constraints-windows-py314.txt']
     capture = {
         'schema_version': 1, 'purpose': 'feature_detection',
         'captured_at': datetime.now(timezone.utc).isoformat(),
@@ -117,7 +122,8 @@ def capture_site(url, output, *, mode='static', max_depth=0, total_timeout_sec=6
         'python': platform.python_version(),
         'packages': {name: version(name) for name in ('beautifulsoup4', 'html5lib', 'soupsieve')},
         'source_hashes': {name: _hash((root / name).read_bytes()) for name in sources},
-        'documents': documents, 'predictions': predictions, 'warnings': warnings,
+        'documents': documents, 'predictions': predictions, 'content_candidates': content_candidates,
+        'content_policy_version': POLICY_VERSION, 'warnings': warnings,
     }
     _write(output / 'capture.json', capture)
     labels = Labels(capture_sha256=_hash((output / 'capture.json').read_bytes()),
@@ -139,6 +145,7 @@ def evaluate_capture(directory):
         raise ValueError('Labels do not belong to this capture')
     documents = {}
     predictions = {}
+    content_candidates = []
     for record in capture['documents']:
         if 'error' in record:
             continue
@@ -153,7 +160,9 @@ def evaluate_capture(directory):
         if doc_key in documents:
             raise ValueError('Duplicate document context')
         documents[doc_key] = BeautifulSoup(page['html'], 'html5lib')
-        for finding in detect_page(page):
+        features = detect_page(page)
+        content_candidates.extend(detect_content(page, feature_findings=features))
+        for finding in features:
             predictions[_key(finding)] = finding
     if not documents:
         raise ValueError('No successful documents to evaluate')
@@ -203,6 +212,9 @@ def evaluate_capture(directory):
         'policy': labels.policy, 'review_complete': labels.complete,
         'collection_warnings': capture['warnings'], 'document_count': len(documents),
         'prediction_count': len(predictions), 'unreviewed_labels': pending,
+        'content_candidate_count': len(content_candidates), 'content_candidates': content_candidates,
+        'content_policy_version': POLICY_VERSION,
+        'metrics_purpose': 'four_technique_features_only',
         'unjudged_predictions': 0 if labels.complete else len(unknown),
         'counts': totals, 'by_technique': counts,
         'metrics': metrics(totals) if labels.complete else None,
