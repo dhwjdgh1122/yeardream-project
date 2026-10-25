@@ -10,7 +10,7 @@
 
 Windows DB 위치는 `%LOCALAPPDATA%\YearDream\history.sqlite3`입니다. 앱을 종료한 상태에서 이 파일을 복사해 백업합니다. 분석 원문·URL·검토 기록이 들어 있으므로 배포 ZIP이나 Git에는 넣지 않습니다. 기존 JSON·검수 파일은 자동으로 가져오지 않습니다. 지금은 로컬 단일 사용자용이며 로그인·여러 사용자 권한 관리는 없습니다. 브라우저의 다른 출처에 대한 CORS 허용은 제거했습니다.
 
-외부 AI API와 RAG는 사용하지 않습니다. 검수 사례 등록·검색과 로컬 모델 기반 RAG는 향후 검토 대상으로 보류했습니다. DB 기능을 포함한 새 실행 파일은 `dist/release-20261025-04/YearDream/YearDream.exe`입니다. 기존 release-20261025-03 exe와 submission-20261025-01 ZIP에는 이 기능이 없으며 보존했습니다. 소스 실행: `.venv\Scripts\python.exe -B run_app.py`.
+외부 AI API와 RAG는 사용하지 않습니다. 검수 사례 등록·검색과 로컬 모델 기반 RAG는 향후 검토 대상으로 보류했습니다. DB 기능을 포함한 새 실행 파일은 `dist/release-20261025-04/YearDream/YearDream.exe`입니다. 사용자 요청으로 이전 release-01·02·03과 submission-01 폴더는 삭제하고 최신 release-04·submission-02만 유지합니다. 소스 실행: `.venv\Scripts\python.exe -B run_app.py`.
 
 URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe을 탐색하고 HOMOGLYPH·JAMO·TRANSPARENT·OFFSCREEN을 탐지합니다. 정확한 요소 위치와 근거를 `result.json` 및 결과 화면으로 제공합니다.
 
@@ -38,7 +38,7 @@ URL을 시작으로 하위 페이지·게시글·댓글·iframe·중첩 iframe�
 
 ## Windows 실행 파일
 
-현재 로컬 최신 배포본은 `dist/release-20261025-04/YearDream/YearDream.exe`입니다. 이전 버전의 콘솔을 Ctrl+C로 종료한 뒤 새 exe를 실행합니다. 기존 release-20261025-01·02·03은 보존했습니다. 아래 release-01은 새 빌드를 위한 예시 경로이며 이미 존재하면 다른 이름을 사용합니다.
+현재 로컬 최신 배포본은 `dist/release-20261025-04/YearDream/YearDream.exe`입니다. 이전 버전의 콘솔을 Ctrl+C로 종료한 뒤 새 exe를 실행합니다. 이전 release-20261025-01·02·03은 사용자 요청으로 삭제했습니다. 아래 release-01은 새 빌드를 위한 예시 경로이며 이미 존재하면 다른 이름을 사용합니다.
 
 Python 없이 실행할 수 있는 폴더형 패키지를 빌드합니다. 빌드 결과는 Git에 포함하지 않으며 로컬 dist 폴더에 생성합니다. 배포 ZIP 전체를 압축 해제한 후 YearDream.exe를 실행하면 로컬 서버와 브라우저 화면이 열립니다. 동적 분석에는 대상 PC의 Microsoft Edge가 필요합니다.
 
@@ -52,7 +52,7 @@ Python 없이 실행할 수 있는 폴더형 패키지를 빌드합니다. 빌�
 
 ## 제출 후보 묶음
 
-현재 생성한 로컬 후보는 `dist/submission-20261025-02/YearDream-submission.zip`이며, DB 포함 release-20261025-04와 최신 점검표/소스를 담았습니다. 압축 해제 전 같은 위치의 `.zip.sha256`과 대조합니다. 실행/결과 위치는 내부 START_HERE.md, 최신 설명서·직접 점검 항목은 `03_docs`를 확인합니다. 실행 폴더의 설명서는 빌드 당시 사본입니다. 실제 생성·압축 해제 검증 범위와 소스 snapshot은 project.md 35절을 따릅니다. 이전 DB 미포함 후보 submission-20261025-01은 보존했습니다. 사용자 직접 점검·다른 PC 검증·서류/접수는 아직 완료되지 않았습니다.
+현재 생성한 로컬 후보는 `dist/submission-20261025-02/YearDream-submission.zip`이며, DB 포함 release-20261025-04와 생성 당시 점검표/소스를 담았습니다. 압축 해제 전 같은 위치의 `.zip.sha256`과 대조합니다. 실행/결과 위치는 내부 START_HERE.md, 묶음 생성 시점의 설명서·점검 항목은 `03_docs`를 확인합니다. 실행 폴더의 설명서는 빌드 당시 사본입니다. 실제 생성·압축 해제 검증 범위와 소스 snapshot은 project.md 35절, 이후 확인/정리는 36~37절을 따릅니다. 이전 후보 submission-20261025-01은 삭제했습니다. 사용자 진술로 현재 PC의 이력·검토 기록 유지를 확인했고, 다른 PC 검증·나머지 직접 점검·서류/접수는 남아 있습니다.
 
 `scripts/package_submission.py`는 검증된 실행 폴더·전체 소스 ZIP·현재 설명서·서류 안내·검증 기록을 한 폴더/ZIP으로 묶습니다. 분석 코드와 실행 파일 빌드 입력을 대조하고 source commit ID/파일 해시를 기록합니다. 실제 수집 데이터·가상환경·기존 결과 파일은 제외합니다. [빌드 설명서의 명령](docs/BUILD_MANUAL.md), [제출 점검표](docs/SUBMISSION_CHECKLIST.md), [다른 PC 점검표](docs/OTHER_PC_CHECKLIST.md)를 따릅니다.
 
