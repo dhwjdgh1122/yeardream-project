@@ -52,7 +52,7 @@ Python 없이 실행할 수 있는 폴더형 패키지를 빌드합니다. 빌�
 
 ## 제출 후보 묶음
 
-현재 생성한 로컬 후보는 `dist/submission-20261025-01/YearDream-submission.zip`이며, 압축 해제 전 같은 위치의 `.zip.sha256`과 대조합니다. 실행/결과 위치와 남은 항목은 내부 START_HERE.md에서 확인합니다. 실제 생성·압축 해제 검증 범위와 소스 snapshot은 project.md 32절에 기록했습니다.
+현재 생성한 로컬 후보는 `dist/submission-20261025-02/YearDream-submission.zip`이며, DB 포함 release-20261025-04와 최신 점검표/소스를 담았습니다. 압축 해제 전 같은 위치의 `.zip.sha256`과 대조합니다. 실행/결과 위치는 내부 START_HERE.md, 최신 설명서·직접 점검 항목은 `03_docs`를 확인합니다. 실행 폴더의 설명서는 빌드 당시 사본입니다. 실제 생성·압축 해제 검증 범위와 소스 snapshot은 project.md 35절을 따릅니다. 이전 DB 미포함 후보 submission-20261025-01은 보존했습니다. 사용자 직접 점검·다른 PC 검증·서류/접수는 아직 완료되지 않았습니다.
 
 `scripts/package_submission.py`는 검증된 실행 폴더·전체 소스 ZIP·현재 설명서·서류 안내·검증 기록을 한 폴더/ZIP으로 묶습니다. 분석 코드와 실행 파일 빌드 입력을 대조하고 source commit ID/파일 해시를 기록합니다. 실제 수집 데이터·가상환경·기존 결과 파일은 제외합니다. [빌드 설명서의 명령](docs/BUILD_MANUAL.md), [제출 점검표](docs/SUBMISSION_CHECKLIST.md), [다른 PC 점검표](docs/OTHER_PC_CHECKLIST.md)를 따릅니다.
 
